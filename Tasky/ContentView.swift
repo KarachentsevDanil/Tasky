@@ -6,56 +6,50 @@
 //
 
 import SwiftUI
-import SwiftData
 
+/// Main content view with enhanced tab navigation
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
 
+    // MARK: - State
+    @StateObject private var viewModel = TaskListViewModel()
+    @State private var selectedTab = 0
+
+    // MARK: - Body
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
+        TabView(selection: $selectedTab) {
+            // Today Tab - Enhanced with completion ring and celebrations
+            TodayView(viewModel: viewModel)
+                .tabItem {
+                    Label("Today", systemImage: "house.fill")
                 }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-        } detail: {
-            Text("Select an item")
-        }
-    }
+                .tag(0)
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
+            // Calendar Tab - Unified view with Day/Week/Month modes
+            UpcomingView(viewModel: viewModel)
+                .tabItem {
+                    Label("Calendar", systemImage: "calendar")
+                }
+                .tag(1)
 
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
+            // AI Assistant Tab - Chat-based task creation
+            AIChatView(dataService: viewModel.dataService)
+                .tabItem {
+                    Label("AI", systemImage: "sparkles")
+                }
+                .tag(2)
+
+            // Progress Tab - Stats, streaks, and achievements
+            ProgressTabView(viewModel: viewModel)
+                .tabItem {
+                    Label("Progress", systemImage: "chart.bar.fill")
+                }
+                .tag(3)
         }
+        .tint(.accentColor)
     }
 }
 
+// MARK: - Preview
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
 }

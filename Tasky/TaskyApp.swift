@@ -6,27 +6,22 @@
 //
 
 import SwiftUI
-import SwiftData
 
 @main
 struct TaskyApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    // MARK: - Properties
+    let persistenceController = PersistenceController.shared
 
+    // MARK: - Body
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(\.managedObjectContext, persistenceController.viewContext)
+                .task {
+                    // Request notification permissions on app launch
+                    try? await NotificationManager.shared.requestAuthorization()
+                }
         }
-        .modelContainer(sharedModelContainer)
     }
 }
