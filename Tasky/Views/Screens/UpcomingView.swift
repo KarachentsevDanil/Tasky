@@ -498,27 +498,8 @@ struct UpcomingView: View {
                             }
                         }
 
-                        // Selection content
-                        ZStack {
-                            RoundedRectangle(cornerRadius: isSelectionStart && isSelectionEnd ? 8 : 0)
-                                .fill(Color.blue.opacity(0.15))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: isSelectionStart && isSelectionEnd ? 8 : 0)
-                                        .stroke(Color.blue, lineWidth: 2)
-                                )
-
-                            // Show time range only in the first hour and when not dragging
-                            if isSelectionStart && !isDraggingSelection {
-                                VStack(spacing: 4) {
-                                    Text(selectedTimeRange ?? "")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(.blue)
-                                }
-                                .padding(8)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: isSelectionStart ? 54 : 60)
+                        // Selection content - cleaner without internal gridlines
+                        selectionBlock(isStart: isSelectionStart, isEnd: isSelectionEnd)
 
                         // Bottom drag handle (only on last hour)
                         if isSelectionEnd {
@@ -637,6 +618,74 @@ struct UpcomingView: View {
         formatter.dateFormat = "ha"
         let date = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: Date()) ?? Date()
         return formatter.string(from: date).lowercased()
+    }
+
+    // Helper method for rendering selection block segment - Google Calendar style
+    private func selectionBlock(isStart: Bool, isEnd: Bool) -> some View {
+        let topRadius: CGFloat = isStart ? 4 : 0
+        let bottomRadius: CGFloat = isEnd ? 4 : 0
+
+        // Calculate height - extend segments to fully cover gridlines
+        let segmentHeight: CGFloat = {
+            if isStart && !isEnd {
+                return 64  // Extend down to cover gridline
+            } else if !isStart && isEnd {
+                return 64  // Extend up to cover gridline
+            } else if !isStart && !isEnd {
+                return 66  // Extend both ways to cover gridlines
+            } else {
+                return 60  // Single hour - full height
+            }
+        }()
+
+        // Calculate vertical offset to properly overlap and hide gridlines
+        let yOffset: CGFloat = {
+            if !isStart && !isEnd {
+                return -3  // Middle segments - overlap both directions
+            } else if isEnd {
+                return -3  // End segment - overlap upward
+            } else {
+                return 0  // Start segment - no offset
+            }
+        }()
+
+        return ZStack(alignment: .topLeading) {
+            // Solid background - Google Calendar style
+            UnevenRoundedRectangle(
+                topLeadingRadius: topRadius,
+                bottomLeadingRadius: bottomRadius,
+                bottomTrailingRadius: bottomRadius,
+                topTrailingRadius: topRadius
+            )
+            .fill(Color.blue)
+            .opacity(0.85)  // More solid like Google Calendar
+
+            // Left accent bar for Google Calendar look
+            if isStart {
+                UnevenRoundedRectangle(
+                    topLeadingRadius: topRadius,
+                    bottomLeadingRadius: isEnd ? bottomRadius : 0,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 0
+                )
+                .fill(Color.blue)
+                .frame(width: 4)
+            }
+
+            // Time range text - only show on first segment
+            if isStart && !isDraggingSelection {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(selectedTimeRange ?? "")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white)
+                }
+                .padding(.leading, 10)
+                .padding(.top, 6)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: segmentHeight)
+        .offset(y: yOffset)
     }
 
     // MARK: - Drag Selection Handlers

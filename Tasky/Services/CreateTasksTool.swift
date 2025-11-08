@@ -71,7 +71,7 @@ struct CreateTasksTool: Tool {
                 // Parse dates if provided, with fallback to today for dueDate
                 var dueDate: Date?
                 if let dueDateString = taskData.dueDate {
-                    dueDate = parseISO8601Date(dueDateString)
+                    dueDate = parseISO8601DateAsDay(dueDateString)
                     if dueDate == nil {
                         print("⚠️ Failed to parse dueDate '\(dueDateString)', defaulting to today")
                         dueDate = Calendar.current.startOfDay(for: Date())
@@ -82,7 +82,7 @@ struct CreateTasksTool: Tool {
                     print("📅 No dueDate provided, defaulting to today")
                 }
 
-                let scheduledTime = taskData.scheduledTime.flatMap { parseISO8601Date($0) }
+                let scheduledTime = taskData.scheduledTime.flatMap { parseISO8601DateWithTime($0) }
 
                 // Debug logging
                 print("📅 CreateTasksTool - Parsing dates for '\(taskData.title)':")
@@ -131,8 +131,9 @@ struct CreateTasksTool: Tool {
         }
     }
 
-    /// Parse ISO 8601 date string with multiple format attempts
-    private func parseISO8601Date(_ dateString: String) -> Date? {
+    /// Parse ISO 8601 date string and normalize to start of day in user's local timezone
+    /// Use this for dueDate to ensure consistent day-based filtering
+    private func parseISO8601DateAsDay(_ dateString: String) -> Date? {
         let formatter = ISO8601DateFormatter()
 
         // Try different ISO 8601 format variations
@@ -146,13 +147,47 @@ struct CreateTasksTool: Tool {
 
         for options in formatOptionsList {
             formatter.formatOptions = options
-            if let date = formatter.date(from: dateString) {
-                return date
+            if let parsedDate = formatter.date(from: dateString) {
+                // Normalize to start of day in user's local timezone
+                let calendar = Calendar.current
+                let components = calendar.dateComponents([.year, .month, .day], from: parsedDate)
+                if let normalizedDate = calendar.date(from: components) {
+                    print("📅 Parsed dueDate '\(dateString)' -> normalized to startOfDay: \(normalizedDate)")
+                    return normalizedDate
+                }
+                return parsedDate
             }
         }
 
         // If all ISO 8601 parsing fails, log the issue
-        print("⚠️ Could not parse date string: '\(dateString)'")
+        print("⚠️ Could not parse dueDate string: '\(dateString)'")
+        return nil
+    }
+
+    /// Parse ISO 8601 date string preserving the exact time
+    /// Use this for scheduledTime to maintain specific appointment times
+    private func parseISO8601DateWithTime(_ dateString: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+
+        // Try different ISO 8601 format variations
+        let formatOptionsList: [ISO8601DateFormatter.Options] = [
+            [.withInternetDateTime, .withFractionalSeconds],  // 2025-11-07T14:30:00.000Z
+            [.withInternetDateTime],                          // 2025-11-07T14:30:00Z
+            [.withFullDate, .withTime, .withColonSeparatorInTime], // 2025-11-07T14:30:00
+            [.withFullDate, .withTime, .withColonSeparatorInTime, .withTimeZone], // 2025-11-07T14:30:00+00:00
+            [.withFullDate]                                   // 2025-11-07 (date only - will use midnight)
+        ]
+
+        for options in formatOptionsList {
+            formatter.formatOptions = options
+            if let parsedDate = formatter.date(from: dateString) {
+                print("📅 Parsed scheduledTime '\(dateString)' -> \(parsedDate)")
+                return parsedDate
+            }
+        }
+
+        // If all ISO 8601 parsing fails, log the issue
+        print("⚠️ Could not parse scheduledTime string: '\(dateString)'")
         return nil
     }
 }
