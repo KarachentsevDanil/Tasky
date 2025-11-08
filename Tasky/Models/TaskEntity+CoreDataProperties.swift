@@ -20,6 +20,7 @@ extension TaskEntity {
     @NSManaged var isCompleted: Bool
     @NSManaged var dueDate: Date?
     @NSManaged var scheduledTime: Date?
+    @NSManaged var scheduledEndTime: Date?
     @NSManaged var createdAt: Date
     @NSManaged var completedAt: Date?
     @NSManaged var priority: Int16
@@ -100,12 +101,17 @@ extension TaskEntity {
         }
     }
 
-    /// Formatted scheduled time string
+    /// Formatted scheduled time string (shows range if end time exists)
     var formattedScheduledTime: String? {
         guard let scheduledTime = scheduledTime else { return nil }
         let formatter = DateFormatter()
         formatter.timeStyle = .short
-        return formatter.string(from: scheduledTime)
+
+        if let endTime = scheduledEndTime {
+            return "\(formatter.string(from: scheduledTime)) - \(formatter.string(from: endTime))"
+        } else {
+            return formatter.string(from: scheduledTime)
+        }
     }
 
     /// Formatted focus time

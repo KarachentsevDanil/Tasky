@@ -31,6 +31,7 @@ class DataService {
         notes: String? = nil,
         dueDate: Date? = nil,
         scheduledTime: Date? = nil,
+        scheduledEndTime: Date? = nil,
         priority: Int16 = 0,
         priorityOrder: Int16 = 0,
         list: TaskListEntity? = nil,
@@ -43,6 +44,7 @@ class DataService {
         task.notes = notes
         task.dueDate = dueDate
         task.scheduledTime = scheduledTime
+        task.scheduledEndTime = scheduledEndTime
         task.priority = priority
         task.priorityOrder = priorityOrder
         task.isCompleted = false
@@ -72,6 +74,7 @@ class DataService {
         notes: String? = nil,
         dueDate: Date? = nil,
         scheduledTime: Date? = nil,
+        scheduledEndTime: Date? = nil,
         priority: Int16? = nil,
         priorityOrder: Int16? = nil,
         list: TaskListEntity? = nil
@@ -88,6 +91,9 @@ class DataService {
         if let scheduledTime = scheduledTime {
             task.scheduledTime = scheduledTime
         }
+        if let scheduledEndTime = scheduledEndTime {
+            task.scheduledEndTime = scheduledEndTime
+        }
         if let priority = priority {
             task.priority = priority
         }
@@ -101,7 +107,7 @@ class DataService {
         try persistenceController.save(context: viewContext)
 
         // Reschedule notifications if dates changed
-        if dueDate != nil || scheduledTime != nil {
+        if dueDate != nil || scheduledTime != nil || scheduledEndTime != nil {
             Task { @MainActor in
                 NotificationManager.shared.cancelTaskNotifications(taskId: task.id)
                 await scheduleNotificationsForTask(task)

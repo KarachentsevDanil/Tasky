@@ -16,6 +16,7 @@ struct AddTaskView: View {
 
     // MARK: - Properties
     let preselectedScheduledTime: Date?
+    let preselectedScheduledEndTime: Date?
 
     // MARK: - State
     @State private var title = ""
@@ -24,18 +25,26 @@ struct AddTaskView: View {
     @State private var dueDate = Date()
     @State private var hasScheduledTime = false
     @State private var scheduledTime = Date()
+    @State private var scheduledEndTime = Date()
     @State private var priority: Constants.TaskPriority = .none
     @State private var selectedList: TaskListEntity?
     @State private var isRecurring = false
     @State private var selectedDays: Set<Int> = []
 
     // MARK: - Initialization
-    init(viewModel: TaskListViewModel, preselectedScheduledTime: Date? = nil) {
+    init(viewModel: TaskListViewModel, preselectedScheduledTime: Date? = nil, preselectedScheduledEndTime: Date? = nil) {
         self.viewModel = viewModel
         self.preselectedScheduledTime = preselectedScheduledTime
+        self.preselectedScheduledEndTime = preselectedScheduledEndTime
         _hasScheduledTime = State(initialValue: preselectedScheduledTime != nil)
         if let preselectedTime = preselectedScheduledTime {
             _scheduledTime = State(initialValue: preselectedTime)
+            // Use preselected end time if provided, otherwise default to 1 hour after start time
+            if let preselectedEnd = preselectedScheduledEndTime {
+                _scheduledEndTime = State(initialValue: preselectedEnd)
+            } else {
+                _scheduledEndTime = State(initialValue: Calendar.current.date(byAdding: .hour, value: 1, to: preselectedTime) ?? preselectedTime)
+            }
         }
     }
 
@@ -83,9 +92,15 @@ struct AddTaskView: View {
 
                     if hasScheduledTime {
                         DatePicker(
-                            "Scheduled time",
+                            "Start time",
                             selection: $scheduledTime,
                             displayedComponents: [.date, .hourAndMinute]
+                        )
+
+                        DatePicker(
+                            "End time",
+                            selection: $scheduledEndTime,
+                            displayedComponents: [.hourAndMinute]
                         )
                     }
                 } header: {
@@ -93,6 +108,9 @@ struct AddTaskView: View {
                 } footer: {
                     if preselectedScheduledTime != nil {
                         Text("Pre-selected from calendar")
+                            .font(.caption)
+                    } else if hasScheduledTime {
+                        Text("Schedule a specific time block for this task")
                             .font(.caption)
                     }
                 }
@@ -212,6 +230,7 @@ struct AddTaskView: View {
                 notes: notes.isEmpty ? nil : notes.trimmingCharacters(in: .whitespacesAndNewlines),
                 dueDate: hasDueDate ? dueDate : nil,
                 scheduledTime: hasScheduledTime ? scheduledTime : nil,
+                scheduledEndTime: hasScheduledTime ? scheduledEndTime : nil,
                 priority: priority.rawValue,
                 list: selectedList,
                 isRecurring: isRecurring,

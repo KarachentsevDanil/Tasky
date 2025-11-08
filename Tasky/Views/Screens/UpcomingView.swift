@@ -19,6 +19,7 @@ struct UpcomingView: View {
     @State private var showMiniCalendar = true
     @State private var selectedView: ViewMode = .day
     @State private var selectedTimeSlot: Date?
+    @State private var selectedEndTimeSlot: Date?
     @State private var showingScheduleTask = false
 
     // Time range selection
@@ -157,11 +158,13 @@ struct UpcomingView: View {
                     ScheduleTaskSheet(
                         viewModel: viewModel,
                         selectedTime: timeSlot,
+                        selectedEndTime: selectedEndTimeSlot,
                         selectedTimeRange: selectedTimeRange,
                         unscheduledTasks: unscheduledTasks,
                         onDismiss: {
                             showingScheduleTask = false
                             selectedTimeSlot = nil
+                            selectedEndTimeSlot = nil
                             clearSelection()
                         }
                     )
@@ -717,7 +720,9 @@ struct UpcomingView: View {
         if let startHour = selectedStartHour, let endHour = selectedEndHour {
             let calendar = Calendar.current
             let minHour = min(startHour, endHour)
+            let maxHour = max(startHour, endHour)
             selectedTimeSlot = calendar.date(bySettingHour: minHour, minute: 0, second: 0, of: selectedDate)
+            selectedEndTimeSlot = calendar.date(bySettingHour: maxHour + 1, minute: 0, second: 0, of: selectedDate)
             showingScheduleTask = true
             HapticManager.shared.lightImpact()
         }
@@ -726,6 +731,7 @@ struct UpcomingView: View {
     private func clearSelection() {
         selectedStartHour = nil
         selectedEndHour = nil
+        selectedEndTimeSlot = nil
         isDraggingSelection = false
     }
 
@@ -1040,6 +1046,7 @@ struct UpcomingTaskRow: View {
 struct ScheduleTaskSheet: View {
     @StateObject var viewModel: TaskListViewModel
     let selectedTime: Date
+    let selectedEndTime: Date?
     let selectedTimeRange: String?
     let unscheduledTasks: [TaskEntity]
     let onDismiss: () -> Void
@@ -1182,7 +1189,7 @@ struct ScheduleTaskSheet: View {
                 }
             }
             .sheet(isPresented: $showingCreateNew) {
-                AddTaskView(viewModel: viewModel, preselectedScheduledTime: selectedTime)
+                AddTaskView(viewModel: viewModel, preselectedScheduledTime: selectedTime, preselectedScheduledEndTime: selectedEndTime)
             }
         }
     }
