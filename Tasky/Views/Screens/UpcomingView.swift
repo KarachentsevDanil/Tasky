@@ -1196,6 +1196,7 @@ struct ScheduleTaskSheet: View {
 
     private func scheduleTask(_ task: TaskEntity) async {
         task.scheduledTime = selectedTime
+        task.scheduledEndTime = selectedEndTime
         await viewModel.updateTask(task)
         HapticManager.shared.success()
         onDismiss()
