@@ -20,7 +20,7 @@ struct AddTaskView: View {
     // MARK: - State
     @State private var title = ""
     @State private var notes = ""
-    @State private var hasDueDate = false
+    @State private var hasDueDate = true  // Default to today for easier task creation
     @State private var dueDate = Date()
     @State private var hasScheduledTime = false
     @State private var scheduledTime = Date()
