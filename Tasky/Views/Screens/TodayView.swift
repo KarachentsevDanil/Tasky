@@ -113,18 +113,9 @@ struct TodayView: View {
     // MARK: - Priority Tasks Section
     private var priorityTasksSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Tasks")
-                    .font(.title2.weight(.bold))
-                    .padding(.horizontal, 4)
-
-                Spacer()
-
-                if !todayTasks.isEmpty {
-                    EditButton()
-                        .font(.subheadline)
-                }
-            }
+            Text("Tasks")
+                .font(.title2.weight(.bold))
+                .padding(.horizontal, 4)
 
             List {
                 ForEach(todayTasks) { task in

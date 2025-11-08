@@ -30,8 +30,6 @@ struct UpcomingView: View {
     enum ViewMode: String, CaseIterable {
         case day = "Day"
         case upcoming = "Upcoming"
-        case week = "Week"
-        case month = "Month"
     }
 
     // MARK: - Computed Properties
@@ -65,47 +63,7 @@ struct UpcomingView: View {
             .sorted { $0.date < $1.date }
     }
 
-    // Week view properties
-    private var weekDates: [Date] {
-        let calendar = Calendar.current
-        let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: selectedDate)?.start ?? selectedDate
-        return (0..<7).compactMap { day in
-            calendar.date(byAdding: .day, value: day, to: startOfWeek)
-        }
-    }
-
-    private var weekRangeText: String {
-        let calendar = Calendar.current
-        guard let firstDay = weekDates.first,
-              let lastDay = weekDates.last else {
-            return ""
-        }
-
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-
-        let firstString = formatter.string(from: firstDay)
-        let lastString = formatter.string(from: lastDay)
-
-        // Add year if different
-        let yearFormatter = DateFormatter()
-        yearFormatter.dateFormat = "yyyy"
-        let firstYear = yearFormatter.string(from: firstDay)
-        let lastYear = yearFormatter.string(from: lastDay)
-
-        if firstYear != lastYear {
-            return "\(firstString), \(firstYear) - \(lastString), \(lastYear)"
-        } else {
-            return "\(firstString) - \(lastString)"
-        }
-    }
-
-    private var isCurrentWeek: Bool {
-        let calendar = Calendar.current
-        return calendar.isDate(selectedDate, equalTo: Date(), toGranularity: .weekOfYear)
-    }
-
-    // Month view properties
+    // Month view properties (used by mini calendar)
     private var monthDates: [Date?] {
         let calendar = Calendar.current
         guard let monthInterval = calendar.dateInterval(of: .month, for: selectedDate),
@@ -138,10 +96,6 @@ struct UpcomingView: View {
     private var isCurrentMonth: Bool {
         let calendar = Calendar.current
         return calendar.isDate(selectedDate, equalTo: Date(), toGranularity: .month)
-    }
-
-    private var selectedDayTasks: [TaskEntity] {
-        tasksForDate(selectedDate)
     }
 
     // Day view properties
@@ -178,10 +132,6 @@ struct UpcomingView: View {
                         dayView
                     case .upcoming:
                         upcomingView
-                    case .week:
-                        weekView
-                    case .month:
-                        monthView
                     }
                 }
             }
@@ -362,7 +312,10 @@ struct UpcomingView: View {
         let isToday = Calendar.current.isDateInToday(date)
         let isSelected = Calendar.current.isDate(date, inSameDayAs: selectedDate)
         let isCurrentMonth = Calendar.current.isDate(date, equalTo: selectedDate, toGranularity: .month)
-        let hasIncompleteTasks = !tasksForDate.filter { !$0.isCompleted }.isEmpty
+
+        let incompleteTasks = tasksForDate.filter { !$0.isCompleted }
+        let incompleteCount = incompleteTasks.count
+        let hasCompletedAllTasks = !tasksForDate.isEmpty && incompleteTasks.isEmpty
 
         return Button {
             withAnimation {
@@ -370,7 +323,7 @@ struct UpcomingView: View {
             }
             HapticManager.shared.selectionChanged()
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: 2) {
                 Text(date, format: .dateTime.day())
                     .font(.system(size: 12, weight: isToday ? .bold : .regular))
                     .foregroundStyle(
@@ -378,15 +331,31 @@ struct UpcomingView: View {
                         isCurrentMonth ? .primary : .secondary
                     )
 
-                // Task indicator dot
-                if hasIncompleteTasks {
-                    Circle()
-                        .fill(Color.orange)
-                        .frame(width: 4, height: 4)
+                // Task indicators
+                if hasCompletedAllTasks {
+                    // Green checkmark for all tasks completed
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 16, height: 16)
+                        .background(
+                            Circle()
+                                .fill(Color.green)
+                        )
+                } else if incompleteCount > 0 {
+                    // Orange circle with task count
+                    Text("\(incompleteCount)")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 16, height: 16)
+                        .background(
+                            Circle()
+                                .fill(Color.orange)
+                        )
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 36)
+            .frame(height: 40)
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
@@ -729,327 +698,6 @@ struct UpcomingView: View {
         return "\(formatter.string(from: startTime)) - \(formatter.string(from: endTime))"
     }
 
-    // MARK: - Week View
-    private var weekView: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Week Navigation
-                weekNavigationHeader
-
-                // Week Days Grid
-                LazyVGrid(columns: [GridItem(.flexible())], spacing: 16) {
-                    ForEach(weekDates, id: \.self) { date in
-                        weekDayCard(for: date)
-                    }
-                }
-                .padding()
-            }
-        }
-    }
-
-    private var weekNavigationHeader: some View {
-        HStack {
-            Button {
-                withAnimation {
-                    selectedDate = Calendar.current.date(byAdding: .weekOfYear, value: -1, to: selectedDate) ?? selectedDate
-                }
-                HapticManager.shared.lightImpact()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.title3)
-            }
-
-            Spacer()
-
-            VStack(spacing: 2) {
-                Text(weekRangeText)
-                    .font(.headline)
-
-                if isCurrentWeek {
-                    Text("This Week")
-                        .font(.caption)
-                        .foregroundStyle(.blue)
-                }
-            }
-
-            Spacer()
-
-            Button {
-                withAnimation {
-                    selectedDate = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: selectedDate) ?? selectedDate
-                }
-                HapticManager.shared.lightImpact()
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.title3)
-            }
-        }
-        .padding()
-    }
-
-    private func weekDayCard(for date: Date) -> some View {
-        let tasksForDate = tasksForDate(date)
-        let isToday = Calendar.current.isDateInToday(date)
-
-        // Calculate task status
-        let completedCount = tasksForDate.filter { $0.isCompleted }.count
-        let totalCount = tasksForDate.count
-        let allCompleted = completedCount == totalCount && totalCount > 0
-
-        return VStack(alignment: .leading, spacing: 12) {
-            // Date Header
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(date, format: .dateTime.weekday(.wide))
-                        .font(.headline)
-                        .foregroundStyle(isToday ? .blue : .primary)
-
-                    Text(date, format: .dateTime.day().month(.abbreviated))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                if !tasksForDate.isEmpty {
-                    ZStack {
-                        Circle()
-                            .fill(allCompleted ? Color.green : Color.orange)
-                            .frame(width: 28, height: 28)
-
-                        if allCompleted {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(.white)
-                        } else {
-                            Text("\(totalCount - completedCount)")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(.white)
-                        }
-                    }
-                }
-            }
-
-            Divider()
-
-            // Tasks for this day
-            if tasksForDate.isEmpty {
-                Text("No tasks")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 8)
-            } else {
-                ForEach(tasksForDate.prefix(3)) { task in
-                    NavigationLink {
-                        TaskDetailView(viewModel: viewModel, task: task)
-                    } label: {
-                        CompactWeekTaskRow(task: task, timerViewModel: timerViewModel)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                if tasksForDate.count > 3 {
-                    Text("+\(tasksForDate.count - 3) more")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(isToday ? Color.accentColor.opacity(0.05) : Color(.secondarySystemBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(isToday ? Color.accentColor : Color.clear, lineWidth: 2)
-        )
-    }
-
-    // MARK: - Month View
-    private var monthView: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Month Navigation
-                monthNavigationHeader
-
-                // Calendar Grid
-                VStack(spacing: 16) {
-                    // Weekday Headers
-                    weekdayHeaders
-
-                    // Calendar Grid
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 12) {
-                        ForEach(monthDates, id: \.self) { date in
-                            if let date = date {
-                                monthDayCell(for: date)
-                            } else {
-                                Color.clear
-                                    .frame(height: 80)
-                            }
-                        }
-                    }
-                }
-                .padding()
-
-                // Selected Day Tasks
-                if !selectedDayTasks.isEmpty {
-                    selectedDayTasksSection
-                }
-            }
-        }
-    }
-
-    private var monthNavigationHeader: some View {
-        HStack {
-            Button {
-                withAnimation {
-                    selectedDate = Calendar.current.date(byAdding: .month, value: -1, to: selectedDate) ?? selectedDate
-                }
-                HapticManager.shared.lightImpact()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.title3)
-            }
-
-            Spacer()
-
-            VStack(spacing: 2) {
-                Text(selectedDate, format: .dateTime.month(.wide).year())
-                    .font(.headline)
-
-                if isCurrentMonth {
-                    Text("This Month")
-                        .font(.caption)
-                        .foregroundStyle(.blue)
-                }
-            }
-
-            Spacer()
-
-            Button {
-                withAnimation {
-                    selectedDate = Calendar.current.date(byAdding: .month, value: 1, to: selectedDate) ?? selectedDate
-                }
-                HapticManager.shared.lightImpact()
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.title3)
-            }
-        }
-        .padding()
-    }
-
-    private var weekdayHeaders: some View {
-        HStack {
-            ForEach(weekdaySymbols, id: \.self) { symbol in
-                Text(symbol)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-            }
-        }
-    }
-
-    private func monthDayCell(for date: Date) -> some View {
-        let tasksForDate = tasksForDate(date)
-        let isToday = Calendar.current.isDateInToday(date)
-        let isSelected = Calendar.current.isDate(date, inSameDayAs: selectedDate)
-        let isCurrentMonth = Calendar.current.isDate(date, equalTo: selectedDate, toGranularity: .month)
-
-        // Calculate task status for this date
-        let completedCount = tasksForDate.filter { $0.isCompleted }.count
-        let totalCount = tasksForDate.count
-        let allCompleted = completedCount == totalCount && totalCount > 0
-
-        return Button {
-            withAnimation {
-                selectedDate = date
-            }
-            HapticManager.shared.selectionChanged()
-        } label: {
-            VStack(spacing: 6) {
-                Text(date, format: .dateTime.day())
-                    .font(.body.weight(isToday ? .bold : .regular))
-                    .foregroundStyle(
-                        isToday ? .blue :
-                        isCurrentMonth ? .primary : .secondary
-                    )
-
-                // Task status indicator
-                if totalCount > 0 {
-                    ZStack {
-                        // Background circle
-                        Circle()
-                            .fill(allCompleted ? Color.green.opacity(0.2) : Color.orange.opacity(0.2))
-                            .frame(width: 20, height: 20)
-
-                        // Count or checkmark
-                        if allCompleted {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.green)
-                        } else {
-                            Text("\(totalCount - completedCount)")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 64)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isToday ? Color.blue : Color.clear, lineWidth: 2)
-            )
-        }
-        .id(date)
-    }
-
-    private var selectedDayTasksSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(selectedDate, format: .dateTime.weekday(.wide).month().day())
-                    .font(.title2.weight(.bold))
-
-                Spacer()
-
-                Text("\(selectedDayTasks.count)")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal)
-
-            ForEach(selectedDayTasks) { task in
-                NavigationLink {
-                    TaskDetailView(viewModel: viewModel, task: task)
-                } label: {
-                    UpcomingTaskRow(task: task, timerViewModel: timerViewModel) {
-                        Task {
-                            await viewModel.toggleTaskCompletion(task)
-                            HapticManager.shared.success()
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal)
-            }
-        }
-        .padding(.vertical)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.05), radius: 10, y: 2)
-        )
-        .padding()
-    }
 
     // MARK: - Date Section
     private func dateSection(for date: Date, tasks: [TaskEntity]) -> some View {
