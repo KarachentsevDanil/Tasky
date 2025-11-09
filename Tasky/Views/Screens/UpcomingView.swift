@@ -536,8 +536,9 @@ struct UpcomingView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                     .padding(.top, 4)
+                    .fixedSize(horizontal: false, vertical: true) // Allow tasks to expand vertically
                 }
             }
             .gesture(
@@ -554,13 +555,15 @@ struct UpcomingView: View {
                     }
             )
         }
-        .frame(height: 60)
+        .frame(minHeight: 60) // Use minHeight instead of fixed height to allow expansion for tasks
         .padding(.horizontal)
     }
 
     // MARK: - Task Block
     private func taskBlock(for task: TaskEntity) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let blockHeight = calculateTaskBlockHeight(for: task)
+
+        return VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Circle()
                     .fill(task.isCompleted ? Color.green : Color.blue)
@@ -576,9 +579,11 @@ struct UpcomingView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+
+            Spacer(minLength: 0)
         }
         .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: blockHeight, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(task.isCompleted ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
@@ -587,6 +592,22 @@ struct UpcomingView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(task.isCompleted ? Color.green : Color.blue, lineWidth: 2)
         )
+    }
+
+    /// Calculate the height for a task block based on its duration
+    private func calculateTaskBlockHeight(for task: TaskEntity) -> CGFloat {
+        guard let startTime = task.scheduledTime else { return 60 }
+
+        let endTime = task.scheduledEndTime ?? Calendar.current.date(byAdding: .hour, value: 1, to: startTime)!
+        let durationInSeconds = endTime.timeIntervalSince(startTime)
+        let durationInHours = durationInSeconds / 3600.0
+
+        // Each hour slot is 60 points, so scale accordingly
+        let hourHeight: CGFloat = 60
+        let calculatedHeight = hourHeight * CGFloat(durationInHours)
+
+        // Subtract 8 points for spacing between slots
+        return max(52, calculatedHeight - 8)
     }
 
     // MARK: - Unscheduled Tasks Sheet
