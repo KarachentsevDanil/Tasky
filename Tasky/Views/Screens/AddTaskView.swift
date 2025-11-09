@@ -39,11 +39,14 @@ struct AddTaskView: View {
         _hasScheduledTime = State(initialValue: preselectedScheduledTime != nil)
         if let preselectedTime = preselectedScheduledTime {
             _scheduledTime = State(initialValue: preselectedTime)
+            // Set dueDate to match the scheduled time's date
+            let calendar = Calendar.current
+            _dueDate = State(initialValue: calendar.startOfDay(for: preselectedTime))
             // Use preselected end time if provided, otherwise default to 1 hour after start time
             if let preselectedEnd = preselectedScheduledEndTime {
                 _scheduledEndTime = State(initialValue: preselectedEnd)
             } else {
-                _scheduledEndTime = State(initialValue: Calendar.current.date(byAdding: .hour, value: 1, to: preselectedTime) ?? preselectedTime)
+                _scheduledEndTime = State(initialValue: calendar.date(byAdding: .hour, value: 1, to: preselectedTime) ?? preselectedTime)
             }
         }
     }

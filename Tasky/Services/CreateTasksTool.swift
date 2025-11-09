@@ -41,8 +41,11 @@ struct CreateTasksTool: Tool {
             @Guide(description: "Optional due date in ISO 8601 format")
             let dueDate: String?
 
-            @Guide(description: "Optional scheduled time in ISO 8601 format")
+            @Guide(description: "Optional scheduled start time in ISO 8601 format")
             let scheduledTime: String?
+
+            @Guide(description: "Optional scheduled end time in ISO 8601 format")
+            let scheduledEndTime: String?
 
             @Guide(description: "Priority level: 0 (none), 1 (low), 2 (medium), 3 (high)")
             let priority: Int?
@@ -83,6 +86,7 @@ struct CreateTasksTool: Tool {
                 }
 
                 let scheduledTime = taskData.scheduledTime.flatMap { parseISO8601DateWithTime($0) }
+                let scheduledEndTime = taskData.scheduledEndTime.flatMap { parseISO8601DateWithTime($0) }
 
                 // Debug logging
                 print("📅 CreateTasksTool - Parsing dates for '\(taskData.title)':")
@@ -90,6 +94,8 @@ struct CreateTasksTool: Tool {
                 print("  - Parsed dueDate: \(dueDate?.description ?? "nil")")
                 print("  - Raw scheduledTime string: \(taskData.scheduledTime ?? "nil")")
                 print("  - Parsed scheduledTime: \(scheduledTime?.description ?? "nil")")
+                print("  - Raw scheduledEndTime string: \(taskData.scheduledEndTime ?? "nil")")
+                print("  - Parsed scheduledEndTime: \(scheduledEndTime?.description ?? "nil")")
 
                 // Validate priority
                 let priority = Int16(min(max(taskData.priority ?? 0, 0), 3))
@@ -100,6 +106,7 @@ struct CreateTasksTool: Tool {
                     notes: taskData.notes,
                     dueDate: dueDate,
                     scheduledTime: scheduledTime,
+                    scheduledEndTime: scheduledEndTime,
                     priority: priority,
                     list: nil,
                     isRecurring: taskData.isRecurring ?? false,
@@ -107,7 +114,7 @@ struct CreateTasksTool: Tool {
                 )
 
                 createdTitles.append(taskData.title)
-                print("✅ Successfully created task '\(taskData.title)' with dueDate: \(dueDate != nil), scheduledTime: \(scheduledTime != nil)")
+                print("✅ Successfully created task '\(taskData.title)' with dueDate: \(dueDate != nil), scheduledTime: \(scheduledTime != nil), scheduledEndTime: \(scheduledEndTime != nil)")
             } catch {
                 failedCount += 1
                 print("❌ Failed to create task '\(taskData.title)': \(error)")

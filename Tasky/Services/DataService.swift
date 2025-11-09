@@ -160,14 +160,18 @@ class DataService {
         let startOfDay = calendar.startOfDay(for: Date())
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
 
+        // Include tasks with dueDate today OR scheduledTime today
         fetchRequest.predicate = NSPredicate(
-            format: "dueDate >= %@ AND dueDate < %@",
+            format: "(dueDate >= %@ AND dueDate < %@) OR (scheduledTime >= %@ AND scheduledTime < %@)",
+            startOfDay as NSDate,
+            endOfDay as NSDate,
             startOfDay as NSDate,
             endOfDay as NSDate
         )
         fetchRequest.sortDescriptors = [
             NSSortDescriptor(keyPath: \TaskEntity.isCompleted, ascending: true),
             NSSortDescriptor(keyPath: \TaskEntity.priorityOrder, ascending: true),
+            NSSortDescriptor(keyPath: \TaskEntity.scheduledTime, ascending: true),
             NSSortDescriptor(keyPath: \TaskEntity.dueDate, ascending: true)
         ]
 
