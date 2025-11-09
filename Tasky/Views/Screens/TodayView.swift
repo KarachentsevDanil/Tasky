@@ -207,7 +207,7 @@ struct TodayView: View {
                 }
             }
             .listStyle(.plain)
-            .frame(minHeight: todayTasks.isEmpty && !showQuickAdd ? 0 : max(CGFloat(todayTasks.count + (showQuickAdd ? 1 : 0)) * 70, 70))
+            .frame(minHeight: todayTasks.isEmpty && !showQuickAdd ? 0 : max(CGFloat(todayTasks.count + (showQuickAdd ? 1 : 0)) * 85, 85))
             .id(todayTasks.map { "\($0.id)-\($0.isCompleted)" }.joined())
         }
     }
@@ -255,7 +255,7 @@ struct TodayView: View {
                 }
             }
             .listStyle(.plain)
-            .frame(minHeight: CGFloat(completedTasks.count) * 70)
+            .frame(minHeight: CGFloat(completedTasks.count) * 85)
             .id(completedTasks.map { "\($0.id)-\($0.isCompleted)" }.joined())
         }
     }
@@ -382,7 +382,7 @@ struct EnhancedTaskRowView: View {
     let onToggleCompletion: () -> Void
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 12) {
             // Completion Button
             Button(action: onToggleCompletion) {
                 Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
@@ -392,14 +392,14 @@ struct EnhancedTaskRowView: View {
             .buttonStyle(.plain)
 
             // Task Content
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(task.title)
                     .font(.body.weight(.medium))
                     .strikethrough(task.isCompleted)
                     .foregroundStyle(task.isCompleted ? .secondary : .primary)
 
                 // Metadata Pills
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     // Focus Timer Pill (tappable)
                     if !task.isCompleted {
                         FocusTimerView(viewModel: timerViewModel, task: task)
@@ -477,7 +477,8 @@ struct EnhancedTaskRowView: View {
 
             Spacer()
         }
-        .padding()
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color(.secondarySystemBackground))
