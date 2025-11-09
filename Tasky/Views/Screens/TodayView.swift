@@ -18,6 +18,9 @@ struct TodayView: View {
     @State private var showingAddTask = false
     @State private var showConfetti = false
     @State private var celebrationMessage = ""
+    @State private var showQuickAdd = false
+    @State private var quickTaskTitle = ""
+    @FocusState private var isQuickAddFocused: Bool
 
     // MARK: - Computed Properties
     private var todayTasks: [TaskEntity] {
@@ -44,10 +47,8 @@ struct TodayView: View {
                     // Completion Ring Header
                     completionHeader
 
-                    // Priority Tasks Section
-                    if !todayTasks.isEmpty {
-                        priorityTasksSection
-                    }
+                    // Priority Tasks Section - always show to allow quick add
+                    priorityTasksSection
 
                     // Completed Tasks Section
                     if !completedTasks.isEmpty {
@@ -55,7 +56,7 @@ struct TodayView: View {
                     }
 
                     // Empty State
-                    if todayTasks.isEmpty && completedTasks.isEmpty {
+                    if todayTasks.isEmpty && completedTasks.isEmpty && !showQuickAdd {
                         emptyStateView
                     }
                 }
@@ -113,11 +114,56 @@ struct TodayView: View {
     // MARK: - Priority Tasks Section
     private var priorityTasksSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Tasks")
-                .font(.title2.weight(.bold))
-                .padding(.horizontal, 4)
+            HStack {
+                Text("Tasks")
+                    .font(.title2.weight(.bold))
+
+                Spacer()
+
+                Button {
+                    HapticManager.shared.lightImpact()
+                    withAnimation {
+                        showQuickAdd.toggle()
+                        if showQuickAdd {
+                            isQuickAddFocused = true
+                        }
+                    }
+                } label: {
+                    Image(systemName: showQuickAdd ? "xmark.circle.fill" : "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.blue)
+                }
+            }
+            .padding(.horizontal, 4)
 
             List {
+                // Quick Add Row
+                if showQuickAdd {
+                    HStack(spacing: 12) {
+                        Image(systemName: "circle")
+                            .font(.title3)
+                            .foregroundStyle(.gray)
+
+                        TextField("Task name", text: $quickTaskTitle)
+                            .focused($isQuickAddFocused)
+                            .submitLabel(.done)
+                            .onSubmit {
+                                addQuickTask()
+                            }
+
+                        if !quickTaskTitle.isEmpty {
+                            Button {
+                                addQuickTask()
+                            } label: {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                    }
+                    .listRowBackground(Color(.systemGray6))
+                }
+
                 ForEach(todayTasks) { task in
                     NavigationLink {
                         TaskDetailView(viewModel: viewModel, task: task)
@@ -157,7 +203,7 @@ struct TodayView: View {
                 }
             }
             .listStyle(.plain)
-            .frame(minHeight: max(CGFloat(todayTasks.count) * 100, 300))
+            .frame(minHeight: todayTasks.isEmpty && !showQuickAdd ? 0 : max(CGFloat(todayTasks.count + (showQuickAdd ? 1 : 0)) * 70, 70))
             .id(todayTasks.map { "\($0.id)-\($0.isCompleted)" }.joined())
         }
     }
@@ -221,6 +267,29 @@ struct TodayView: View {
         Task {
             await viewModel.reorderTasks(tasks)
             HapticManager.shared.selectionChanged()
+        }
+    }
+
+    private func addQuickTask() {
+        let trimmedTitle = quickTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
+
+        Task {
+            // Create task with today's due date
+            await viewModel.createTask(
+                title: trimmedTitle,
+                dueDate: Calendar.current.startOfDay(for: Date()),
+                priority: 0
+            )
+
+            // Reset quick add state
+            await MainActor.run {
+                quickTaskTitle = ""
+                withAnimation {
+                    showQuickAdd = false
+                }
+                HapticManager.shared.success()
+            }
         }
     }
 
