@@ -53,14 +53,18 @@ struct TodayView: View {
                     // Completed Tasks Section
                     if !completedTasks.isEmpty {
                         completedTasksSection
+                            .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
                     // Empty State
                     if todayTasks.isEmpty && completedTasks.isEmpty && !showQuickAdd {
                         emptyStateView
+                            .transition(.opacity)
                     }
                 }
                 .padding()
+                .animation(.easeInOut(duration: 0.3), value: todayTasks.count)
+                .animation(.easeInOut(duration: 0.3), value: completedTasks.count)
             }
             .navigationTitle("Today")
             .toolbar {
@@ -224,18 +228,35 @@ struct TodayView: View {
             }
             .padding(.horizontal, 4)
 
-            ForEach(completedTasks) { task in
-                NavigationLink {
-                    TaskDetailView(viewModel: viewModel, task: task)
-                } label: {
-                    EnhancedTaskRowView(task: task, timerViewModel: timerViewModel) {
-                        Task {
-                            await toggleTaskCompletion(task)
+            List {
+                ForEach(completedTasks) { task in
+                    NavigationLink {
+                        TaskDetailView(viewModel: viewModel, task: task)
+                    } label: {
+                        EnhancedTaskRowView(task: task, timerViewModel: timerViewModel) {
+                            Task {
+                                await toggleTaskCompletion(task)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            Task {
+                                await viewModel.deleteTask(task)
+                            }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
                         }
                     }
                 }
-                .buttonStyle(.plain)
             }
+            .listStyle(.plain)
+            .frame(minHeight: CGFloat(completedTasks.count) * 70)
+            .id(completedTasks.map { "\($0.id)-\($0.isCompleted)" }.joined())
         }
     }
 
@@ -299,12 +320,13 @@ struct TodayView: View {
         // Toggle completion
         await viewModel.toggleTaskCompletion(task)
 
-        // If task was just completed, celebrate!
-        if !wasCompleted {
-            celebrateCompletion()
-        } else {
-            // Just haptic for un-completing
-            HapticManager.shared.mediumImpact()
+        // Haptic and visual feedback
+        await MainActor.run {
+            if !wasCompleted {
+                celebrateCompletion()
+            } else {
+                HapticManager.shared.mediumImpact()
+            }
         }
     }
 
