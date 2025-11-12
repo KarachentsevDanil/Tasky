@@ -12,6 +12,7 @@ struct TaskListView: View {
 
     // MARK: - Properties
     @StateObject var viewModel: TaskListViewModel
+    @StateObject private var timerViewModel = FocusTimerViewModel()
     let filterType: TaskListViewModel.FilterType
     let title: String
 
@@ -63,7 +64,7 @@ struct TaskListView: View {
         List {
             ForEach(viewModel.tasks, id: \.id) { task in
                 NavigationLink {
-                    TaskDetailView(viewModel: viewModel, task: task)
+                    TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
                 } label: {
                     TaskRowView(task: task) {
                         Task {

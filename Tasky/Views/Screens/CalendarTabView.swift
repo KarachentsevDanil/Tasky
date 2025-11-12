@@ -221,7 +221,7 @@ struct CalendarTabView: View {
             } else {
                 ForEach(tasksForDate.prefix(3)) { task in
                     NavigationLink {
-                        TaskDetailView(viewModel: viewModel, task: task)
+                        TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
                     } label: {
                         CompactWeekTaskRow(task: task, timerViewModel: timerViewModel)
                     }
@@ -407,14 +407,18 @@ struct CalendarTabView: View {
 
             ForEach(selectedDayTasks) { task in
                 NavigationLink {
-                    TaskDetailView(viewModel: viewModel, task: task)
+                    TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
                 } label: {
-                    EnhancedTaskRowView(task: task, timerViewModel: timerViewModel) {
-                        Task {
-                            await viewModel.toggleTaskCompletion(task)
-                            HapticManager.shared.success()
+                    EnhancedTaskRowView(
+                        task: task,
+                        timerViewModel: timerViewModel,
+                        onToggleCompletion: {
+                            Task {
+                                await viewModel.toggleTaskCompletion(task)
+                                HapticManager.shared.success()
+                            }
                         }
-                    }
+                    )
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal)

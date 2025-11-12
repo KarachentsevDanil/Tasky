@@ -220,7 +220,7 @@ struct UpcomingView: View {
                             VStack(spacing: 8) {
                                 ForEach(group.tasks) { task in
                                     NavigationLink {
-                                        TaskDetailView(viewModel: viewModel, task: task)
+                                        TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
                                     } label: {
                                         UpcomingTaskRow(task: task, timerViewModel: timerViewModel) {
                                             Task {
@@ -529,7 +529,7 @@ struct UpcomingView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(tasksInHour) { task in
                             NavigationLink {
-                                TaskDetailView(viewModel: viewModel, task: task)
+                                TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
                             } label: {
                                 taskBlock(for: task)
                             }
@@ -781,7 +781,7 @@ struct UpcomingView: View {
             VStack(spacing: 8) {
                 ForEach(tasks) { task in
                     NavigationLink {
-                        TaskDetailView(viewModel: viewModel, task: task)
+                        TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
                     } label: {
                         UpcomingTaskRow(task: task, timerViewModel: timerViewModel) {
                             Task {
@@ -908,48 +908,98 @@ struct CompactWeekTaskRow: View {
     @ObservedObject var timerViewModel: FocusTimerViewModel
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Completion indicator
-            Circle()
-                .fill(task.isCompleted ? Color.green : Color.gray.opacity(0.3))
-                .frame(width: 8, height: 8)
-
-            // Task content
-            VStack(alignment: .leading, spacing: 4) {
-                Text(task.title)
-                    .font(.subheadline)
-                    .strikethrough(task.isCompleted)
-                    .foregroundStyle(task.isCompleted ? .secondary : .primary)
-                    .lineLimit(1)
-
-                HStack(spacing: 8) {
-                    // Focus Timer Badge
-                    if !task.isCompleted {
-                        FocusTimerView(viewModel: timerViewModel, task: task)
-                    }
-
-                    if let formattedTime = task.formattedScheduledTime {
-                        Label(formattedTime, systemImage: "clock")
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                    }
-
-                    if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority) {
-                        Label(priority.displayName, systemImage: "flag.fill")
-                            .font(.caption2)
-                            .foregroundStyle(priority.color)
-                    }
-                }
+        HStack(spacing: 0) {
+            // Priority Accent Bar
+            if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority) {
+                Rectangle()
+                    .fill(priority.color)
+                    .frame(width: 3)
+                    .opacity(task.isCompleted ? 0.4 : 1.0)
             }
 
-            Spacer()
+            HStack(spacing: 12) {
+                // Completion indicator
+                Circle()
+                    .fill(task.isCompleted ? Color.green : Color.gray.opacity(0.3))
+                    .frame(width: 8, height: 8)
+
+                // Task content
+                VStack(alignment: .leading, spacing: 4) {
+                    // Title with timer indicator
+                    HStack(alignment: .center, spacing: 6) {
+                        Text(task.title)
+                            .font(.subheadline)
+                            .strikethrough(task.isCompleted)
+                            .foregroundStyle(task.isCompleted ? .secondary : .primary)
+                            .lineLimit(1)
+
+                        Spacer(minLength: 4)
+
+                        // Small timer icon indicator (only when timer is active for this task)
+                        if isTimerActive {
+                            Image(systemName: "timer")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.orange)
+                                .symbolEffect(.pulse, options: .repeating)
+                        }
+                    }
+
+                    // Metadata Pills
+                    HStack(spacing: 6) {
+                        // Scheduled Time - Prominent
+                        if let formattedTime = task.formattedScheduledTime {
+                            HStack(spacing: 3) {
+                                Image(systemName: "clock.fill")
+                                    .font(.system(size: 9))
+                                Text(formattedTime)
+                                    .font(.caption2.weight(.semibold))
+                            }
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule()
+                                    .fill(Color.blue.opacity(0.15))
+                                    .overlay(Capsule().stroke(Color.blue.opacity(0.3), lineWidth: 0.8))
+                            )
+                        }
+
+                        // Priority
+                        if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority) {
+                            HStack(spacing: 2) {
+                                Image(systemName: "flag.fill")
+                                    .font(.system(size: 8))
+                                Text(priority.displayName)
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            .foregroundStyle(priority.color)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule()
+                                    .fill(priority.color.opacity(0.15))
+                                    .overlay(Capsule().stroke(priority.color.opacity(0.4), lineWidth: 1))
+                            )
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, task.priority > 0 ? 8 : 0)
+            .padding(.trailing, 8)
+            .padding(.vertical, 8)
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color(.tertiarySystemBackground))
         )
+    }
+
+    private var isTimerActive: Bool {
+        guard let currentTask = timerViewModel.currentTask else { return false }
+        return currentTask.id == task.id &&
+               (timerViewModel.timerState == .running || timerViewModel.timerState == .paused)
     }
 }
 
@@ -960,106 +1010,139 @@ struct UpcomingTaskRow: View {
     let onToggleCompletion: () -> Void
 
     var body: some View {
-        HStack(spacing: 16) {
-            // Completion Button
-            Button(action: onToggleCompletion) {
-                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(task.isCompleted ? .green : .gray)
+        HStack(spacing: 0) {
+            // Priority Accent Bar (left edge)
+            if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority) {
+                Rectangle()
+                    .fill(priority.color)
+                    .frame(width: 4)
+                    .opacity(task.isCompleted ? 0.4 : 1.0)
             }
-            .buttonStyle(.plain)
 
-            // Task Content
-            VStack(alignment: .leading, spacing: 8) {
-                Text(task.title)
-                    .font(.body)
-                    .strikethrough(task.isCompleted)
-                    .foregroundStyle(task.isCompleted ? .secondary : .primary)
+            HStack(spacing: 10) {
+                // Completion Button
+                Button(action: onToggleCompletion) {
+                    Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(task.isCompleted ? .green : .gray)
+                }
+                .buttonStyle(.plain)
 
-                // Metadata Pills
-                HStack(spacing: 8) {
-                    // Focus Timer Pill
-                    if !task.isCompleted {
-                        FocusTimerView(viewModel: timerViewModel, task: task)
-                    }
+                // Task Content
+                VStack(alignment: .leading, spacing: 6) {
+                    // Title Row with timer indicator
+                    HStack(alignment: .center, spacing: 8) {
+                        Text(task.title)
+                            .font(.body)
+                            .strikethrough(task.isCompleted)
+                            .foregroundStyle(task.isCompleted ? .secondary : .primary)
+                            .lineLimit(2)
 
-                    // Recurrence Pill
-                    if task.isRecurring, let recurrenceDesc = task.recurrenceDescription {
-                        HStack(spacing: 4) {
-                            Image(systemName: "repeat")
-                                .font(.caption2)
-                            Text(recurrenceDesc)
-                                .font(.caption2.weight(.medium))
+                        Spacer(minLength: 4)
+
+                        // Small timer icon indicator (only when timer is active for this task)
+                        if isTimerActive {
+                            Image(systemName: "timer")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .symbolEffect(.pulse, options: .repeating)
                         }
-                        .foregroundStyle(.purple)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(Color.purple.opacity(0.15))
-                        )
-                        .opacity(task.isCompleted ? 0.5 : 1.0)
                     }
 
-                    // Priority Pill
-                    if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority) {
-                        Text(priority.displayName)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(priority.color)
+                    // Metadata Pills - Prioritize time information
+                    HStack(spacing: 6) {
+                        // Scheduled Time/Due Date - MOST PROMINENT
+                        if let formattedTime = task.formattedScheduledTime {
+                            HStack(spacing: 4) {
+                                Image(systemName: "clock.fill")
+                                    .font(.caption)
+                                Text(formattedTime)
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(.blue)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
                                 Capsule()
-                                    .fill(priority.color.opacity(0.15))
+                                    .fill(Color.blue.opacity(0.15))
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                                    )
                             )
                             .opacity(task.isCompleted ? 0.5 : 1.0)
-                    }
-
-                    // List Pill
-                    if let list = task.taskList {
-                        HStack(spacing: 4) {
-                            Image(systemName: list.iconName ?? "list.bullet")
-                                .font(.caption2)
-                            Text(list.name)
-                                .font(.caption2.weight(.medium))
                         }
-                        .foregroundStyle(list.color)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(list.color.opacity(0.15))
-                        )
-                        .opacity(task.isCompleted ? 0.5 : 1.0)
-                    }
 
-                    // Scheduled Time Pill
-                    if let formattedTime = task.formattedScheduledTime {
-                        HStack(spacing: 4) {
-                            Image(systemName: "clock")
-                                .font(.caption2)
-                            Text(formattedTime)
-                                .font(.caption2.weight(.medium))
+                        // Priority Pill - With icon for better visibility
+                        if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "flag.fill")
+                                    .font(.caption2)
+                                Text(priority.displayName)
+                                    .font(.caption2.weight(.semibold))
+                            }
+                            .foregroundStyle(priority.color)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule()
+                                    .fill(priority.color.opacity(0.15))
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(priority.color.opacity(0.4), lineWidth: 1.5)
+                                    )
+                            )
+                            .opacity(task.isCompleted ? 0.5 : 1.0)
                         }
-                        .foregroundStyle(.blue)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(Color.blue.opacity(0.15))
-                        )
-                        .opacity(task.isCompleted ? 0.5 : 1.0)
+
+                        // Recurrence Pill
+                        if task.isRecurring, let recurrenceDesc = task.recurrenceDescription {
+                            HStack(spacing: 3) {
+                                Image(systemName: "repeat")
+                                    .font(.caption2)
+                                Text(recurrenceDesc)
+                                    .font(.caption2)
+                            }
+                            .foregroundStyle(.purple)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color.purple.opacity(0.15)))
+                            .opacity(task.isCompleted ? 0.5 : 1.0)
+                        }
+
+                        // List Pill
+                        if let list = task.taskList {
+                            HStack(spacing: 3) {
+                                Image(systemName: list.iconName ?? "list.bullet")
+                                    .font(.caption2)
+                                Text(list.name)
+                                    .font(.caption2)
+                            }
+                            .foregroundStyle(list.color)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(list.color.opacity(0.15)))
+                            .opacity(task.isCompleted ? 0.5 : 1.0)
+                        }
                     }
                 }
-            }
 
-            Spacer()
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, task.priority > 0 ? 10 : 0)
+            .padding(.trailing, 10)
+            .padding(.vertical, 12)
         }
-        .padding()
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color(.secondarySystemBackground))
         )
+    }
+
+    private var isTimerActive: Bool {
+        guard let currentTask = timerViewModel.currentTask else { return false }
+        return currentTask.id == task.id &&
+               (timerViewModel.timerState == .running || timerViewModel.timerState == .paused)
     }
 }
 

@@ -14,6 +14,7 @@ struct TaskDetailView: View {
     // MARK: - Environment
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: TaskListViewModel
+    @ObservedObject var timerViewModel: FocusTimerViewModel
     let task: TaskEntity
 
     // MARK: - State
@@ -24,10 +25,12 @@ struct TaskDetailView: View {
     @State private var priority: Constants.TaskPriority
     @State private var selectedList: TaskListEntity?
     @State private var isEditing = false
+    @State private var showFullTimer = false
 
     // MARK: - Initialization
-    init(viewModel: TaskListViewModel, task: TaskEntity) {
+    init(viewModel: TaskListViewModel, timerViewModel: FocusTimerViewModel, task: TaskEntity) {
         self.viewModel = viewModel
+        self.timerViewModel = timerViewModel
         self.task = task
 
         _title = State(initialValue: task.title)
@@ -79,6 +82,124 @@ struct TaskDetailView: View {
                         Text(completedAt, style: .date)
                             .foregroundStyle(.secondary)
                     }
+                }
+            }
+
+            // Focus Timer Section
+            if !task.isCompleted {
+                Section {
+                    // Timer Stats
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Total Focus Time")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Text(task.formattedFocusTime)
+                                .font(.title3.weight(.semibold))
+                                .monospacedDigit()
+                        }
+                        Spacer()
+                        Image(systemName: "flame.fill")
+                            .font(.title2)
+                            .foregroundStyle(.orange)
+                    }
+                    .padding(.vertical, 4)
+
+                    // Timer Controls
+                    if isTimerActive {
+                        // Active timer - show current state
+                        VStack(spacing: 12) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(timerViewModel.sessionType)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    Text(timerViewModel.formattedTime)
+                                        .font(.system(.title, design: .rounded).weight(.bold))
+                                        .monospacedDigit()
+                                        .foregroundStyle(timerViewModel.timerState == .running ? .orange : .yellow)
+                                }
+                                Spacer()
+                                if timerViewModel.timerState == .paused {
+                                    HStack(spacing: 6) {
+                                        Circle()
+                                            .fill(Color.yellow)
+                                            .frame(width: 8, height: 8)
+                                        Text("Paused")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+
+                            // Timer buttons
+                            HStack(spacing: 12) {
+                                Button {
+                                    timerViewModel.stopTimer()
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "stop.fill")
+                                        Text("Stop")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.red)
+
+                                Button {
+                                    switch timerViewModel.timerState {
+                                    case .running:
+                                        timerViewModel.pauseTimer()
+                                    case .paused:
+                                        timerViewModel.resumeTimer()
+                                    default:
+                                        break
+                                    }
+                                } label: {
+                                    HStack {
+                                        Image(systemName: timerViewModel.timerState == .running ? "pause.fill" : "play.fill")
+                                        Text(timerViewModel.timerState == .running ? "Pause" : "Resume")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.orange)
+                            }
+
+                            // View full timer button
+                            Button {
+                                showFullTimer = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    Text("Full Screen")
+                                }
+                                .font(.caption)
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    } else {
+                        // No active timer - show start button
+                        Button {
+                            timerViewModel.startTimer(for: task)
+                        } label: {
+                            HStack {
+                                Image(systemName: "play.circle.fill")
+                                    .font(.title3)
+                                Text("Start Focus Session")
+                                    .font(.body.weight(.semibold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                    }
+                } header: {
+                    Text("Focus Timer")
                 }
             }
 
@@ -216,6 +337,11 @@ struct TaskDetailView: View {
         }
         .navigationTitle("Task Details")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showFullTimer) {
+            FocusTimerFullView(viewModel: timerViewModel, task: task, onDismiss: {
+                showFullTimer = false
+            })
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(isEditing ? "Done" : "Edit") {
@@ -235,6 +361,14 @@ struct TaskDetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Computed Properties
+
+    private var isTimerActive: Bool {
+        guard let currentTask = timerViewModel.currentTask else { return false }
+        return currentTask.id == task.id &&
+               (timerViewModel.timerState == .running || timerViewModel.timerState == .paused)
     }
 
     // MARK: - Methods
@@ -274,6 +408,7 @@ struct TaskDetailView: View {
     NavigationStack {
         TaskDetailView(
             viewModel: TaskListViewModel(dataService: DataService(persistenceController: .preview)),
+            timerViewModel: FocusTimerViewModel(),
             task: {
                 let context = PersistenceController.preview.viewContext
                 let task = TaskEntity(context: context)
