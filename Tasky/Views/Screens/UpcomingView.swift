@@ -433,15 +433,22 @@ struct UpcomingView: View {
         let yPosition = hoursFromStart * hourHeight
 
         return HStack(spacing: 0) {
-            // Left padding to align with time labels
+            // Match the time slot layout spacing:
+            // Time label (60) + spacing (12) + divider (1) + spacing (12)
+
+            // Time label width
             Color.clear
                 .frame(width: 60)
 
-            // Vertical divider space
+            // First spacing (12pt like in timeSlot)
+            Color.clear
+                .frame(width: 12)
+
+            // Divider width
             Color.clear
                 .frame(width: 1)
 
-            // Left padding before dot
+            // Second spacing (12pt like in timeSlot)
             Color.clear
                 .frame(width: 12)
 
@@ -455,6 +462,7 @@ struct UpcomingView: View {
                 .fill(Color.red)
                 .frame(height: 2)
         }
+        .padding(.horizontal, 16) // Match the .padding(.horizontal) from timeSlot
         .offset(y: yPosition)
         .zIndex(100) // Ensure it appears above time slots
     }
