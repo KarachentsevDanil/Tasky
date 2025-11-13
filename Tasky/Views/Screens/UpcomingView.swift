@@ -187,10 +187,17 @@ struct UpcomingView: View {
 
             // Timeline View
             ScrollView {
-                VStack(spacing: 0) {
-                    // Time slots (6 AM - 11 PM)
-                    ForEach(6..<24) { hour in
-                        timeSlot(for: hour)
+                ZStack(alignment: .topLeading) {
+                    VStack(spacing: 0) {
+                        // Time slots (6 AM - 11 PM)
+                        ForEach(6..<24) { hour in
+                            timeSlot(for: hour)
+                        }
+                    }
+
+                    // Current time indicator (only show for today)
+                    if Calendar.current.isDateInToday(selectedDate) {
+                        currentTimeIndicator
                     }
                 }
             }
@@ -410,6 +417,46 @@ struct UpcomingView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(Color(.systemGroupedBackground))
+    }
+
+    // MARK: - Current Time Indicator
+    private var currentTimeIndicator: some View {
+        let calendar = Calendar.current
+        let now = Date()
+        let currentHour = calendar.component(.hour, from: now)
+        let currentMinute = calendar.component(.minute, from: now)
+
+        // Calculate position (6 AM is the start, each hour is 60 points)
+        let startHour: CGFloat = 6
+        let hourHeight: CGFloat = 60
+        let hoursFromStart = CGFloat(currentHour) - startHour + (CGFloat(currentMinute) / 60.0)
+        let yPosition = hoursFromStart * hourHeight
+
+        return HStack(spacing: 0) {
+            // Left padding to align with time labels
+            Color.clear
+                .frame(width: 60)
+
+            // Vertical divider space
+            Color.clear
+                .frame(width: 1)
+
+            // Left padding before dot
+            Color.clear
+                .frame(width: 12)
+
+            // Red dot
+            Circle()
+                .fill(Color.red)
+                .frame(width: 10, height: 10)
+
+            // Red line
+            Rectangle()
+                .fill(Color.red)
+                .frame(height: 2)
+        }
+        .offset(y: yPosition)
+        .zIndex(100) // Ensure it appears above time slots
     }
 
     // MARK: - Date Picker
