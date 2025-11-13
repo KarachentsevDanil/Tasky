@@ -194,14 +194,17 @@ struct UpcomingView: View {
                     }
                 }
                 .overlay(alignment: .topLeading) {
-                    // Current time indicator (only show for today)
-                    if Calendar.current.isDateInToday(selectedDate) {
-                        currentTimeIndicator
-                    }
+                    // Tasks overlay - renders all scheduled tasks with absolute positioning
+                    tasksOverlay()
 
                     // Time range selection overlay
                     if let startHour = selectedStartHour, let endHour = selectedEndHour {
                         timeRangeSelectionOverlay(startHour: startHour, endHour: endHour)
+                    }
+
+                    // Current time indicator (only show for today)
+                    if Calendar.current.isDateInToday(selectedDate) {
+                        currentTimeIndicator
                     }
                 }
             }
@@ -448,6 +451,7 @@ struct UpcomingView: View {
             }
             .padding(.horizontal, TimelineConstants.horizontalPadding)
             .offset(y: yPosition)
+            .zIndex(3) // Always on top
             .allowsHitTesting(false)
         }
     }
@@ -513,12 +517,59 @@ struct UpcomingView: View {
         }
         .padding(.horizontal, TimelineConstants.horizontalPadding)
         .offset(y: yPosition)
+        .zIndex(1) // Selection behind tasks
         .allowsHitTesting(true)
         .onTapGesture {
             if !isDraggingSelection {
                 openScheduleSheet()
             }
         }
+    }
+
+    // MARK: - Tasks Overlay
+    private func tasksOverlay() -> some View {
+        ForEach(scheduledTasks) { task in
+            taskOverlayBlock(for: task)
+        }
+    }
+
+    private func taskOverlayBlock(for task: TaskEntity) -> some View {
+        guard let scheduledTime = task.scheduledTime else {
+            return AnyView(EmptyView())
+        }
+
+        let calendar = Calendar.current
+        let startHour = calendar.component(.hour, from: scheduledTime)
+        let startMinute = calendar.component(.minute, from: scheduledTime)
+
+        // Calculate Y position from timeline start (6am)
+        let hoursFromStart = CGFloat(startHour - 6) + (CGFloat(startMinute) / 60.0)
+        let yPosition = hoursFromStart * TimelineConstants.hourHeight
+
+        // Calculate height based on duration
+        let height = calculateTaskBlockHeight(for: task)
+
+        return AnyView(
+            HStack(spacing: 0) {
+                // Match the time slot layout spacing
+                Color.clear.frame(width: TimelineConstants.timeLabelWidth)
+                Color.clear.frame(width: TimelineConstants.spacing)
+                Color.clear.frame(width: TimelineConstants.dividerWidth)
+                Color.clear.frame(width: TimelineConstants.spacing)
+
+                // Task block as NavigationLink
+                NavigationLink {
+                    TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
+                } label: {
+                    taskBlock(for: task)
+                        .frame(height: height)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, TimelineConstants.horizontalPadding)
+            .offset(y: yPosition)
+            .zIndex(2) // Tasks on top of selection
+        )
     }
 
     // MARK: - Helper Methods
@@ -586,6 +637,7 @@ struct UpcomingView: View {
 
     // MARK: - Time Slot
     private func timeSlot(for hour: Int) -> some View {
+        // Check if any tasks start in this hour (for drag gesture blocking)
         let tasksInHour = scheduledTasks.filter { task in
             guard let scheduledTime = task.scheduledTime else { return false }
             let taskHour = Calendar.current.component(.hour, from: scheduledTime)
@@ -604,40 +656,20 @@ struct UpcomingView: View {
                 .fill(Color(.separator))
                 .frame(width: 1)
 
-            // Tasks or empty space
-            ZStack(alignment: .topLeading) {
-                // Background - always present for gesture
-                Color.clear
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 60)
-                    .contentShape(Rectangle())
-
-                // Show tasks (if any)
-                if !tasksInHour.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(tasksInHour) { task in
-                            NavigationLink {
-                                TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
-                            } label: {
-                                taskBlock(for: task)
-                            }
-                            .buttonStyle(.plain)
+            // Empty space for gestures
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .frame(height: 60)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            handleDragChanged(hour: hour, location: value.location, tasksInHour: tasksInHour)
                         }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .zIndex(1) // Tasks on top of everything
-                }
-            }
-            .frame(minHeight: 60, alignment: .top) // Allow expansion for multi-hour tasks
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        handleDragChanged(hour: hour, location: value.location, tasksInHour: tasksInHour)
-                    }
-                    .onEnded { _ in
-                        handleDragEnded()
-                    }
-            )
+                        .onEnded { _ in
+                            handleDragEnded()
+                        }
+                )
         }
         .padding(.horizontal)
     }
