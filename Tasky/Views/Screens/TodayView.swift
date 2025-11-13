@@ -82,7 +82,7 @@ struct TodayView: View {
 
                     // Completed Section
                     if !completedTasks.isEmpty {
-                        // completedSection
+                        completedSection
                     }
                 }
                 .padding(.horizontal, 16)
