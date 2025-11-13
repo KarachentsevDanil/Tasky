@@ -420,50 +420,53 @@ struct UpcomingView: View {
 
     // MARK: - Current Time Indicator
     private var currentTimeIndicator: some View {
-        let calendar = Calendar.current
-        let now = Date()
-        let currentHour = calendar.component(.hour, from: now)
-        let currentMinute = calendar.component(.minute, from: now)
+        // Use TimelineView for real-time updates (updates every minute)
+        TimelineView(.everyMinute) { context in
+            let yPosition = calculateTimeIndicatorPosition(for: context.date)
 
-        // Calculate Y position from start of timeline (6 AM = hour 0 in our view)
-        let startHour: CGFloat = 6
-        let hourHeight: CGFloat = 60
-        let hoursFromStart = CGFloat(currentHour) - startHour + (CGFloat(currentMinute) / 60.0)
-        let yPosition = hoursFromStart * hourHeight
+            HStack(spacing: 0) {
+                // Match the time slot layout spacing
+                Color.clear.frame(width: TimelineConstants.timeLabelWidth)
+                Color.clear.frame(width: TimelineConstants.spacing)
+                Color.clear.frame(width: TimelineConstants.dividerWidth)
+                Color.clear.frame(width: TimelineConstants.spacing)
 
-        return HStack(spacing: 0) {
-            // Match the time slot layout spacing:
-            // Time label (60) + spacing (12) + divider (1) + spacing (12)
+                // Red dot
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: TimelineConstants.indicatorDotSize, height: TimelineConstants.indicatorDotSize)
 
-            // Time label width
-            Color.clear
-                .frame(width: 60)
-
-            // First spacing (12pt)
-            Color.clear
-                .frame(width: 12)
-
-            // Divider width
-            Color.clear
-                .frame(width: 1)
-
-            // Second spacing (12pt)
-            Color.clear
-                .frame(width: 12)
-
-            // Red dot
-            Circle()
-                .fill(Color.red)
-                .frame(width: 10, height: 10)
-
-            // Red line extending to the right
-            Rectangle()
-                .fill(Color.red)
-                .frame(height: 2)
+                // Red line
+                Rectangle()
+                    .fill(Color.red)
+                    .frame(height: TimelineConstants.indicatorLineHeight)
+            }
+            .padding(.horizontal, TimelineConstants.horizontalPadding)
+            .offset(y: yPosition)
+            .allowsHitTesting(false)
         }
-        .padding(.horizontal, 16)
-        .offset(y: yPosition)
-        .allowsHitTesting(false) // Don't interfere with gestures
+    }
+
+    // MARK: - Helper Methods
+    private func calculateTimeIndicatorPosition(for date: Date) -> CGFloat {
+        let calendar = Calendar.current
+        let currentHour = calendar.component(.hour, from: date)
+        let currentMinute = calendar.component(.minute, from: date)
+
+        let hoursFromStart = CGFloat(currentHour) - TimelineConstants.startHour + (CGFloat(currentMinute) / 60.0)
+        return hoursFromStart * TimelineConstants.hourHeight
+    }
+
+    // MARK: - Constants
+    private enum TimelineConstants {
+        static let startHour: CGFloat = 6
+        static let hourHeight: CGFloat = 60
+        static let timeLabelWidth: CGFloat = 60
+        static let spacing: CGFloat = 12
+        static let dividerWidth: CGFloat = 1
+        static let horizontalPadding: CGFloat = 16
+        static let indicatorDotSize: CGFloat = 10
+        static let indicatorLineHeight: CGFloat = 2
     }
 
     // MARK: - Date Picker
