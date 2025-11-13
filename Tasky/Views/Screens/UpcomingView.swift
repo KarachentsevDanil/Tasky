@@ -198,6 +198,11 @@ struct UpcomingView: View {
                     if Calendar.current.isDateInToday(selectedDate) {
                         currentTimeIndicator
                     }
+
+                    // Time range selection overlay
+                    if let startHour = selectedStartHour, let endHour = selectedEndHour {
+                        timeRangeSelectionOverlay(startHour: startHour, endHour: endHour)
+                    }
                 }
             }
 
@@ -447,6 +452,75 @@ struct UpcomingView: View {
         }
     }
 
+    // MARK: - Time Range Selection Overlay
+    private func timeRangeSelectionOverlay(startHour: Int, endHour: Int) -> some View {
+        let minHour = min(startHour, endHour)
+        let maxHour = max(startHour, endHour)
+
+        // Calculate position and height
+        let yPosition = CGFloat(minHour - 6) * TimelineConstants.hourHeight
+        let numberOfHours = CGFloat(maxHour - minHour + 1)
+        let height = numberOfHours * TimelineConstants.hourHeight
+
+        return HStack(spacing: 0) {
+            // Match the time slot layout spacing
+            Color.clear.frame(width: TimelineConstants.timeLabelWidth)
+            Color.clear.frame(width: TimelineConstants.spacing)
+            Color.clear.frame(width: TimelineConstants.dividerWidth)
+            Color.clear.frame(width: TimelineConstants.spacing)
+
+            // Selection block - single continuous element
+            VStack(spacing: 0) {
+                // Top drag handle
+                HStack {
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 12, height: 12)
+                        .padding(.top, -6)
+                    Spacer()
+                }
+
+                // Main selection block
+                ZStack(alignment: .topLeading) {
+                    // Background
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.blue.opacity(0.15))
+
+                    // Border
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.blue, lineWidth: 2)
+
+                    // Time range text
+                    if let timeRange = selectedTimeRange {
+                        Text(timeRange)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.blue)
+                            .padding(.leading, 12)
+                            .padding(.top, 8)
+                    }
+                }
+                .frame(height: height)
+
+                // Bottom drag handle
+                HStack {
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 12, height: 12)
+                        .padding(.bottom, -6)
+                    Spacer()
+                }
+            }
+        }
+        .padding(.horizontal, TimelineConstants.horizontalPadding)
+        .offset(y: yPosition)
+        .allowsHitTesting(true)
+        .onTapGesture {
+            if !isDraggingSelection {
+                openScheduleSheet()
+            }
+        }
+    }
+
     // MARK: - Helper Methods
     private func calculateTimeIndicatorPosition(for date: Date) -> CGFloat {
         let calendar = Calendar.current
@@ -518,12 +592,6 @@ struct UpcomingView: View {
             return taskHour == hour
         }
 
-        let minHour = selectedStartHour != nil && selectedEndHour != nil ? min(selectedStartHour!, selectedEndHour!) : nil
-        let maxHour = selectedStartHour != nil && selectedEndHour != nil ? max(selectedStartHour!, selectedEndHour!) : nil
-        let isSelectionStart = hour == minHour
-        let isSelectionEnd = hour == maxHour
-        let isInSelection = minHour != nil && maxHour != nil && hour >= minHour! && hour <= maxHour!
-
         return HStack(alignment: .top, spacing: 12) {
             // Time Label
             Text(formatHour(hour))
@@ -536,7 +604,7 @@ struct UpcomingView: View {
                 .fill(Color(.separator))
                 .frame(width: 1)
 
-            // Tasks or selection or empty space
+            // Tasks or empty space
             ZStack(alignment: .topLeading) {
                 // Background - always present for gesture
                 Color.clear
@@ -544,45 +612,7 @@ struct UpcomingView: View {
                     .frame(height: 60)
                     .contentShape(Rectangle())
 
-                // Selection rendering (if this hour is in selection AND no tasks)
-                if isInSelection && tasksInHour.isEmpty {
-                    VStack(spacing: 0) {
-                        // Top drag handle (only on first hour)
-                        if isSelectionStart {
-                            HStack {
-                                Circle()
-                                    .fill(Color.blue)
-                                    .frame(width: 12, height: 12)
-                                    .padding(.top, -6)
-                                Spacer()
-                            }
-                        }
-
-                        // Selection content - cleaner without internal gridlines
-                        selectionBlock(isStart: isSelectionStart, isEnd: isSelectionEnd)
-
-                        // Bottom drag handle (only on last hour)
-                        if isSelectionEnd {
-                            HStack {
-                                Circle()
-                                    .fill(Color.blue)
-                                    .frame(width: 12, height: 12)
-                                    .padding(.bottom, -6)
-                                Spacer()
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .onTapGesture {
-                        // Tap on selection to open schedule sheet
-                        if !isDraggingSelection {
-                            openScheduleSheet()
-                        }
-                    }
-                    .zIndex(0) // Selection behind tasks
-                }
-
-                // Show tasks (if any) - these should render on top and can expand beyond hour slot
+                // Show tasks (if any)
                 if !tasksInHour.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(tasksInHour) { task in
@@ -696,67 +726,6 @@ struct UpcomingView: View {
         formatter.dateFormat = "ha"
         let date = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: Date()) ?? Date()
         return formatter.string(from: date).lowercased()
-    }
-
-    // Helper method for rendering selection block segment - Clean iOS style
-    private func selectionBlock(isStart: Bool, isEnd: Bool) -> some View {
-        let topRadius: CGFloat = isStart ? 8 : 0
-        let bottomRadius: CGFloat = isEnd ? 8 : 0
-
-        return ZStack(alignment: .topLeading) {
-            // Solid background fill
-            UnevenRoundedRectangle(
-                topLeadingRadius: topRadius,
-                bottomLeadingRadius: bottomRadius,
-                bottomTrailingRadius: bottomRadius,
-                topTrailingRadius: topRadius
-            )
-            .fill(Color.blue.opacity(0.15))
-
-            // Stroke only on outer edges
-            ZStack {
-                // Left edge stroke (all segments)
-                Rectangle()
-                    .fill(Color.blue)
-                    .frame(width: 2)
-                    .frame(maxHeight: .infinity, alignment: .leading)
-
-                // Right edge stroke (all segments)
-                Rectangle()
-                    .fill(Color.blue)
-                    .frame(width: 2)
-                    .frame(maxHeight: .infinity, alignment: .trailing)
-
-                // Top edge stroke (only start segment)
-                if isStart {
-                    Rectangle()
-                        .fill(Color.blue)
-                        .frame(height: 2)
-                        .frame(maxWidth: .infinity, alignment: .top)
-                }
-
-                // Bottom edge stroke (only end segment)
-                if isEnd {
-                    Rectangle()
-                        .fill(Color.blue)
-                        .frame(height: 2)
-                        .frame(maxWidth: .infinity, alignment: .bottom)
-                }
-            }
-
-            // Time range text - only show on first segment
-            if isStart {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(selectedTimeRange ?? "")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.blue)
-                }
-                .padding(.leading, 12)
-                .padding(.top, 8)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 60)
     }
 
     // MARK: - Drag Selection Handlers
