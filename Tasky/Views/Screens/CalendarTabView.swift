@@ -406,21 +406,15 @@ struct CalendarTabView: View {
             .padding(.horizontal)
 
             ForEach(selectedDayTasks) { task in
-                NavigationLink {
-                    TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
-                } label: {
-                    EnhancedTaskRowView(
-                        task: task,
-                        timerViewModel: timerViewModel,
-                        onToggleCompletion: {
-                            Task {
-                                await viewModel.toggleTaskCompletion(task)
-                                HapticManager.shared.success()
-                            }
-                        }
-                    )
+                ModernTaskCardView(task: task) {
+                    Task {
+                        await viewModel.toggleTaskCompletion(task)
+                        HapticManager.shared.success()
+                    }
                 }
-                .buttonStyle(.plain)
+                .onTapGesture {
+                    // Navigate to task detail
+                }
                 .padding(.horizontal)
             }
         }
