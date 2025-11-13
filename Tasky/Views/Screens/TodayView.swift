@@ -308,6 +308,7 @@ struct TodayView: View {
         guard !trimmedTitle.isEmpty else { return }
 
         Task {
+            // Quick add sets due date to today (so it appears in Today view)
             await viewModel.createTask(
                 title: trimmedTitle,
                 dueDate: Calendar.current.startOfDay(for: Date()),
@@ -416,12 +417,12 @@ struct ModernTaskCardView: View {
                                 .foregroundStyle(.blue)
                             }
 
-                            // Due time (if different from scheduled)
+                            // Due date (if different from scheduled)
                             if task.scheduledTime == nil, let dueDate = task.dueDate {
                                 HStack(spacing: 3) {
                                     Image(systemName: "clock")
                                         .font(.system(size: 9))
-                                    Text("Due \(formatTime(dueDate))")
+                                    Text(formatDueDate(dueDate))
                                         .font(.system(size: 11))
                                 }
                                 .foregroundStyle(.blue)
@@ -456,6 +457,30 @@ struct ModernTaskCardView: View {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+
+    private func formatDueDate(_ date: Date) -> String {
+        let calendar = Calendar.current
+
+        // Check if time is midnight (00:00) - indicates it's just a date, not a specific time
+        let components = calendar.dateComponents([.hour, .minute], from: date)
+        let isMidnight = components.hour == 0 && components.minute == 0
+
+        if isMidnight {
+            // Just show "Today", "Tomorrow", or the date
+            if calendar.isDateInToday(date) {
+                return "Today"
+            } else if calendar.isDateInTomorrow(date) {
+                return "Tomorrow"
+            } else {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "MMM d"
+                return formatter.string(from: date)
+            }
+        } else {
+            // Show "Due HH:mm" for tasks with specific times
+            return "Due \(formatTime(date))"
+        }
     }
 }
 
