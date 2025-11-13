@@ -70,7 +70,7 @@ struct TodayView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 12) {
                     // Header
                     headerView
 
@@ -88,7 +88,8 @@ struct TodayView: View {
                         completedSection
                     }
                 }
-                .padding()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
             .background(Color(.systemGroupedBackground))
             .navigationBarHidden(true)
@@ -133,28 +134,28 @@ struct TodayView: View {
 
     // MARK: - Daily Progress Card
     private var dailyProgressCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("Daily Progress: \(Int(completionPercentage * 100))% Complete")
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
 
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     // Background
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: 6)
                         .fill(Color.white.opacity(0.3))
-                        .frame(height: 8)
+                        .frame(height: 6)
 
                     // Progress
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: 6)
                         .fill(Color.white.opacity(0.5))
-                        .frame(width: geometry.size.width * completionPercentage, height: 8)
+                        .frame(width: geometry.size.width * completionPercentage, height: 6)
                         .animation(.spring(response: 0.6, dampingFraction: 0.8), value: completionPercentage)
                 }
             }
-            .frame(height: 8)
+            .frame(height: 6)
         }
-        .padding(20)
+        .padding(16)
         .background(
             LinearGradient(
                 colors: [Color(red: 0.5, green: 0.5, blue: 0.9), Color(red: 0.6, green: 0.4, blue: 0.8)],
@@ -162,20 +163,20 @@ struct TodayView: View {
                 endPoint: .bottomTrailing
             )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     // MARK: - Quick Add Card
     private var quickAddCard: some View {
-        HStack(spacing: 12) {
-            // Blue + button
+        HStack(spacing: 10) {
+            // Blue + button (smaller)
             ZStack {
                 Circle()
                     .fill(Color.blue)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 32, height: 32)
 
                 Image(systemName: "plus")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
             }
 
@@ -186,28 +187,30 @@ struct TodayView: View {
                     addQuickTask()
                 }
 
-            if !quickTaskTitle.isEmpty {
-                Button {
-                    addQuickTask()
-                } label: {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.green)
-                }
-                .buttonStyle(.plain)
+            // Always show ellipsis for advanced options
+            Button {
+                HapticManager.shared.lightImpact()
+                sheetPresentation = .addTask
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
             }
+            .buttonStyle(.plain)
         }
-        .padding(16)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
     }
 
     // MARK: - Tasks Section
     private var tasksSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("Tasks")
-                .font(.title2.weight(.bold))
+                .font(.title3.weight(.bold))
                 .padding(.horizontal, 4)
 
             if todayTasks.isEmpty {
@@ -252,16 +255,16 @@ struct TodayView: View {
 
     // MARK: - Completed Section
     private var completedSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Completed")
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
 
                 Spacer()
 
                 Text("\(completedTasks.count)")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 4)
@@ -346,39 +349,39 @@ struct ModernTaskCardView: View {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(priority.color)
                     .frame(width: 4)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 6)
             }
 
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 // Checkbox
                 Button(action: onToggleCompletion) {
                     Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
+                        .font(.body)
                         .foregroundStyle(task.isCompleted ? .green : Color(.systemGray3))
                 }
                 .buttonStyle(.plain)
 
                 // Task content
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(task.title)
-                        .font(.body.weight(.medium))
+                        .font(.callout.weight(.medium))
                         .foregroundStyle(task.isCompleted ? .secondary : .primary)
                         .strikethrough(task.isCompleted)
 
                     // Metadata pills
                     if hasMetadata {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
                             // Priority pill
                             if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority) {
-                                HStack(spacing: 4) {
+                                HStack(spacing: 3) {
                                     Image(systemName: "exclamationmark.circle.fill")
-                                        .font(.caption2)
+                                        .font(.system(size: 9))
                                     Text(priority.displayName)
-                                        .font(.caption.weight(.semibold))
+                                        .font(.system(size: 11, weight: .semibold))
                                 }
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
                                 .background(
                                     Capsule()
                                         .fill(priority.color)
@@ -387,15 +390,15 @@ struct ModernTaskCardView: View {
 
                             // Recurring pill
                             if task.isRecurring {
-                                HStack(spacing: 4) {
+                                HStack(spacing: 3) {
                                     Image(systemName: "repeat")
-                                        .font(.caption2)
+                                        .font(.system(size: 9))
                                     Text("Daily")
-                                        .font(.caption.weight(.medium))
+                                        .font(.system(size: 11, weight: .medium))
                                 }
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
                                 .background(
                                     Capsule()
                                         .fill(Color.purple)
@@ -404,22 +407,22 @@ struct ModernTaskCardView: View {
 
                             // Scheduled time
                             if let formattedTime = task.formattedScheduledTime {
-                                HStack(spacing: 4) {
+                                HStack(spacing: 3) {
                                     Image(systemName: "clock")
-                                        .font(.caption2)
+                                        .font(.system(size: 9))
                                     Text(formattedTime)
-                                        .font(.caption)
+                                        .font(.system(size: 11))
                                 }
                                 .foregroundStyle(.blue)
                             }
 
                             // Due time (if different from scheduled)
                             if task.scheduledTime == nil, let dueDate = task.dueDate {
-                                HStack(spacing: 4) {
+                                HStack(spacing: 3) {
                                     Image(systemName: "clock")
-                                        .font(.caption2)
+                                        .font(.system(size: 9))
                                     Text("Due \(formatTime(dueDate))")
-                                        .font(.caption)
+                                        .font(.system(size: 11))
                                 }
                                 .foregroundStyle(.blue)
                             }
@@ -433,16 +436,16 @@ struct ModernTaskCardView: View {
                 if task.notes != nil && !task.notes!.isEmpty {
                     Circle()
                         .fill(Color.green)
-                        .frame(width: 8, height: 8)
+                        .frame(width: 6, height: 6)
                 }
             }
-            .padding(.leading, task.priority > 0 ? 12 : 16)
-            .padding(.trailing, 16)
-            .padding(.vertical, 16)
+            .padding(.leading, task.priority > 0 ? 10 : 12)
+            .padding(.trailing, 12)
+            .padding(.vertical, 12)
         }
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
     }
 
     private var hasMetadata: Bool {
