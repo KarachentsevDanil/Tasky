@@ -169,16 +169,27 @@ struct TodayView: View {
     // MARK: - Quick Add Card
     private var quickAddCard: some View {
         HStack(spacing: 10) {
-            // Blue + button (smaller)
-            ZStack {
-                Circle()
-                    .fill(Color.blue)
-                    .frame(width: 32, height: 32)
+            // Blue + button (clickable to create task)
+            Button {
+                if !quickTaskTitle.isEmpty {
+                    addQuickTask()
+                } else {
+                    // If empty, focus the text field
+                    isQuickAddFocused = true
+                }
+                HapticManager.shared.lightImpact()
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 32, height: 32)
 
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
             }
+            .buttonStyle(.plain)
 
             TextField("What do you want to accomplish?", text: $quickTaskTitle)
                 .focused($isQuickAddFocused)
