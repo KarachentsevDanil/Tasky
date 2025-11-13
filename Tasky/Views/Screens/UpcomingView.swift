@@ -190,14 +190,13 @@ struct UpcomingView: View {
                 VStack(spacing: 0) {
                     // Time slots (6 AM - 11 PM)
                     ForEach(6..<24) { hour in
-                        ZStack(alignment: .topLeading) {
-                            timeSlot(for: hour)
-
-                            // Current time indicator (only show for today and this hour)
-                            if Calendar.current.isDateInToday(selectedDate) {
-                                currentTimeIndicator(for: hour)
-                            }
-                        }
+                        timeSlot(for: hour)
+                    }
+                }
+                .overlay(alignment: .topLeading) {
+                    // Current time indicator (only show for today)
+                    if Calendar.current.isDateInToday(selectedDate) {
+                        currentTimeIndicator
                     }
                 }
             }
@@ -420,56 +419,51 @@ struct UpcomingView: View {
     }
 
     // MARK: - Current Time Indicator
-    private func currentTimeIndicator(for hour: Int) -> some View {
+    private var currentTimeIndicator: some View {
         let calendar = Calendar.current
         let now = Date()
         let currentHour = calendar.component(.hour, from: now)
         let currentMinute = calendar.component(.minute, from: now)
 
-        // Only show the indicator if this is the current hour
-        guard currentHour == hour else {
-            return AnyView(EmptyView())
+        // Calculate Y position from start of timeline (6 AM = hour 0 in our view)
+        let startHour: CGFloat = 6
+        let hourHeight: CGFloat = 60
+        let hoursFromStart = CGFloat(currentHour) - startHour + (CGFloat(currentMinute) / 60.0)
+        let yPosition = hoursFromStart * hourHeight
+
+        return HStack(spacing: 0) {
+            // Match the time slot layout spacing:
+            // Time label (60) + spacing (12) + divider (1) + spacing (12)
+
+            // Time label width
+            Color.clear
+                .frame(width: 60)
+
+            // First spacing (12pt)
+            Color.clear
+                .frame(width: 12)
+
+            // Divider width
+            Color.clear
+                .frame(width: 1)
+
+            // Second spacing (12pt)
+            Color.clear
+                .frame(width: 12)
+
+            // Red dot
+            Circle()
+                .fill(Color.red)
+                .frame(width: 10, height: 10)
+
+            // Red line extending to the right
+            Rectangle()
+                .fill(Color.red)
+                .frame(height: 2)
         }
-
-        // Calculate Y position within this hour slot (0-60 points)
-        let minuteProgress = CGFloat(currentMinute) / 60.0
-        let yPosition = minuteProgress * 60.0
-
-        return AnyView(
-            HStack(spacing: 0) {
-                // Match the time slot layout spacing:
-                // Time label (60) + spacing (12) + divider (1) + spacing (12)
-
-                // Time label width
-                Color.clear
-                    .frame(width: 60)
-
-                // First spacing (12pt)
-                Color.clear
-                    .frame(width: 12)
-
-                // Divider width
-                Color.clear
-                    .frame(width: 1)
-
-                // Second spacing (12pt)
-                Color.clear
-                    .frame(width: 12)
-
-                // Red dot
-                Circle()
-                    .fill(Color.red)
-                    .frame(width: 10, height: 10)
-
-                // Red line extending to the right
-                Rectangle()
-                    .fill(Color.red)
-                    .frame(height: 2)
-            }
-            .padding(.horizontal, 16)
-            .offset(y: yPosition)
-            .allowsHitTesting(false) // Don't interfere with gestures
-        )
+        .padding(.horizontal, 16)
+        .offset(y: yPosition)
+        .allowsHitTesting(false) // Don't interfere with gestures
     }
 
     // MARK: - Date Picker
