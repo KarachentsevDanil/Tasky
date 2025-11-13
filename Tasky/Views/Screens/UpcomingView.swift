@@ -544,7 +544,7 @@ struct UpcomingView: View {
                     .frame(height: 60)
                     .contentShape(Rectangle())
 
-                // Selection rendering (if this hour is in selection)
+                // Selection rendering (if this hour is in selection AND no tasks)
                 if isInSelection && tasksInHour.isEmpty {
                     VStack(spacing: 0) {
                         // Top drag handle (only on first hour)
@@ -579,11 +579,12 @@ struct UpcomingView: View {
                             openScheduleSheet()
                         }
                     }
+                    .zIndex(0) // Selection behind tasks
                 }
 
-                // Show tasks (if any)
+                // Show tasks (if any) - these should render on top and can expand beyond hour slot
                 if !tasksInHour.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
                         ForEach(tasksInHour) { task in
                             NavigationLink {
                                 TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
@@ -594,25 +595,20 @@ struct UpcomingView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .padding(.top, 4)
-                    .fixedSize(horizontal: false, vertical: true) // Allow tasks to expand vertically
+                    .zIndex(1) // Tasks on top of everything
                 }
             }
+            .frame(minHeight: 60, alignment: .top) // Allow expansion for multi-hour tasks
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        if tasksInHour.isEmpty {
-                            handleDragChanged(hour: hour, location: value.location)
-                        }
+                        handleDragChanged(hour: hour, location: value.location, tasksInHour: tasksInHour)
                     }
                     .onEnded { _ in
-                        if tasksInHour.isEmpty {
-                            handleDragEnded()
-                        }
+                        handleDragEnded()
                     }
             )
         }
-        .frame(minHeight: 60) // Use minHeight instead of fixed height to allow expansion for tasks
         .padding(.horizontal)
     }
 
@@ -653,7 +649,7 @@ struct UpcomingView: View {
 
     /// Calculate the height for a task block based on its duration
     private func calculateTaskBlockHeight(for task: TaskEntity) -> CGFloat {
-        guard let startTime = task.scheduledTime else { return 60 }
+        guard let startTime = task.scheduledTime else { return 56 }
 
         let endTime = task.scheduledEndTime ?? Calendar.current.date(byAdding: .hour, value: 1, to: startTime)!
         let durationInSeconds = endTime.timeIntervalSince(startTime)
@@ -663,8 +659,9 @@ struct UpcomingView: View {
         let hourHeight: CGFloat = 60
         let calculatedHeight = hourHeight * CGFloat(durationInHours)
 
-        // Subtract 8 points for spacing between slots
-        return max(52, calculatedHeight - 8)
+        // Subtract small margin for visual clarity (4pt at top + 4pt at bottom = 8pt total per hour span)
+        let margin: CGFloat = 8
+        return max(52, calculatedHeight - margin)
     }
 
     // MARK: - Unscheduled Tasks Sheet
@@ -763,7 +760,10 @@ struct UpcomingView: View {
     }
 
     // MARK: - Drag Selection Handlers
-    private func handleDragChanged(hour: Int, location: CGPoint) {
+    private func handleDragChanged(hour: Int, location: CGPoint, tasksInHour: [TaskEntity]) {
+        // Don't allow creating selection in hours with tasks
+        guard tasksInHour.isEmpty else { return }
+
         if selectedStartHour == nil {
             // First touch - set start hour
             selectedStartHour = hour
@@ -771,9 +771,17 @@ struct UpcomingView: View {
             isDraggingSelection = true
             HapticManager.shared.selectionChanged()
         } else {
+            // Calculate which hour we're dragging over based on location
+            // Each hour slot is 60pt tall
+            let hourOffset = Int(location.y / 60)
+            let targetHour = hour + hourOffset
+
+            // Clamp to valid hour range (6 AM to 11 PM)
+            let clampedHour = max(6, min(23, targetHour))
+
             // Update end hour based on drag position
-            if selectedEndHour != hour {
-                selectedEndHour = hour
+            if selectedEndHour != clampedHour {
+                selectedEndHour = clampedHour
                 HapticManager.shared.selectionChanged()
             }
         }
