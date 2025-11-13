@@ -528,48 +528,86 @@ struct UpcomingView: View {
 
     // MARK: - Tasks Overlay
     private func tasksOverlay() -> some View {
-        ForEach(scheduledTasks) { task in
-            taskOverlayBlock(for: task)
+        // Allow hit testing to pass through except on tasks themselves
+        ZStack(alignment: .topLeading) {
+            ForEach(scheduledTasks) { task in
+                taskOverlayBlock(for: task)
+            }
         }
+        .allowsHitTesting(false) // This makes gestures work on hour slots below
     }
 
+    @ViewBuilder
     private func taskOverlayBlock(for task: TaskEntity) -> some View {
-        guard let scheduledTime = task.scheduledTime else {
-            return AnyView(EmptyView())
-        }
+        if let scheduledTime = task.scheduledTime {
+            let calendar = Calendar.current
+            let startHour = calendar.component(.hour, from: scheduledTime)
+            let startMinute = calendar.component(.minute, from: scheduledTime)
 
-        let calendar = Calendar.current
-        let startHour = calendar.component(.hour, from: scheduledTime)
-        let startMinute = calendar.component(.minute, from: scheduledTime)
+            // Calculate Y position from timeline start (6am)
+            let hoursFromStart = CGFloat(startHour - 6) + (CGFloat(startMinute) / 60.0)
+            let yPosition = hoursFromStart * TimelineConstants.hourHeight
 
-        // Calculate Y position from timeline start (6am)
-        let hoursFromStart = CGFloat(startHour - 6) + (CGFloat(startMinute) / 60.0)
-        let yPosition = hoursFromStart * TimelineConstants.hourHeight
+            // Calculate height based on duration
+            let endTime = task.scheduledEndTime ?? calendar.date(byAdding: .hour, value: 1, to: scheduledTime)!
+            let durationInSeconds = endTime.timeIntervalSince(scheduledTime)
+            let durationInHours = durationInSeconds / 3600.0
+            let height = max(52, TimelineConstants.hourHeight * CGFloat(durationInHours) - 8)
 
-        // Calculate height based on duration
-        let height = calculateTaskBlockHeight(for: task)
+            ZStack(alignment: .topLeading) {
+                // Invisible spacer to maintain layout structure
+                HStack(spacing: 0) {
+                    Color.clear.frame(width: TimelineConstants.timeLabelWidth)
+                    Color.clear.frame(width: TimelineConstants.spacing)
+                    Color.clear.frame(width: TimelineConstants.dividerWidth)
+                    Color.clear.frame(width: TimelineConstants.spacing)
+                    Color.clear.frame(maxWidth: .infinity)
+                }
+                .allowsHitTesting(false)
 
-        return AnyView(
-            HStack(spacing: 0) {
-                // Match the time slot layout spacing
-                Color.clear.frame(width: TimelineConstants.timeLabelWidth)
-                Color.clear.frame(width: TimelineConstants.spacing)
-                Color.clear.frame(width: TimelineConstants.dividerWidth)
-                Color.clear.frame(width: TimelineConstants.spacing)
-
-                // Task block as NavigationLink
+                // Task block positioned absolutely
                 NavigationLink {
                     TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
                 } label: {
-                    taskBlock(for: task)
-                        .frame(height: height)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Circle()
+                                .fill(task.isCompleted ? Color.green : Color.blue)
+                                .frame(width: 8, height: 8)
+
+                            Text(task.title)
+                                .font(.subheadline.weight(.medium))
+                                .strikethrough(task.isCompleted)
+                        }
+
+                        if let time = task.formattedScheduledTime {
+                            Text(time)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer(minLength: 0)
+                    }
+                    .padding(12)
+                    .frame(minHeight: height, alignment: .topLeading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(task.isCompleted ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(task.isCompleted ? Color.green : Color.blue, lineWidth: 2)
+                    )
                 }
                 .buttonStyle(.plain)
+                .allowsHitTesting(true) // Enable tapping on tasks
+                .padding(.leading, TimelineConstants.timeLabelWidth + TimelineConstants.spacing + TimelineConstants.dividerWidth + TimelineConstants.spacing)
+                .padding(.trailing, TimelineConstants.horizontalPadding)
             }
             .padding(.horizontal, TimelineConstants.horizontalPadding)
             .offset(y: yPosition)
             .zIndex(2) // Tasks on top of selection
-        )
+        }
     }
 
     // MARK: - Helper Methods
