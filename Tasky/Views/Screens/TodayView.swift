@@ -74,9 +74,6 @@ struct TodayView: View {
                     // Header
                     headerView
 
-                    // Daily Progress Card
-                    dailyProgressCard
-
                     // Quick Add Card
                     quickAddCard
 
@@ -85,7 +82,7 @@ struct TodayView: View {
 
                     // Completed Section
                     if !completedTasks.isEmpty {
-                        completedSection
+                        // completedSection
                     }
                 }
                 .padding(.horizontal, 16)
@@ -124,12 +121,8 @@ struct TodayView: View {
             }
 
             Spacer()
-
-            Text("\(tasksLeftCount) task\(tasksLeftCount == 1 ? "" : "s") left")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 8)
     }
 
     // MARK: - Daily Progress Card
@@ -168,7 +161,7 @@ struct TodayView: View {
 
     // MARK: - Quick Add Card
     private var quickAddCard: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             // Blue + button (clickable to create task)
             Button {
                 if !quickTaskTitle.isEmpty {
@@ -182,7 +175,7 @@ struct TodayView: View {
                 ZStack {
                     Circle()
                         .fill(Color.blue)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 20, height: 20)
 
                     Image(systemName: "plus")
                         .font(.system(size: 14, weight: .semibold))
@@ -220,9 +213,6 @@ struct TodayView: View {
     // MARK: - Tasks Section
     private var tasksSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Tasks")
-                .font(.title3.weight(.bold))
-                .padding(.horizontal, 4)
 
             if todayTasks.isEmpty {
                 emptyStateView
@@ -262,24 +252,12 @@ struct TodayView: View {
                 }
             }
         }
+        .padding(.top, 4)
     }
 
     // MARK: - Completed Section
     private var completedSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Completed")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Text("\(completedTasks.count)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 4)
-
             ForEach(completedTasks) { task in
                 ModernTaskCardView(task: task) {
                     Task {
