@@ -15,6 +15,7 @@ struct UpcomingView: View {
     @StateObject private var timerViewModel = FocusTimerViewModel()
     @StateObject private var dayCalendarViewModel: DayCalendarViewModel
     @State private var selectedDate = Date()
+    @State private var selectedDateForFiltering: Date?
     @State private var showingAddTask = false
     @State private var selectedView: ViewMode = .day
 
@@ -33,27 +34,71 @@ struct UpcomingView: View {
     // MARK: - Computed Properties
     private var groupedTasks: [(date: Date, tasks: [TaskEntity])] {
         let calendar = Calendar.current
+        let now = Date()
 
-        // Get all upcoming tasks (today and future)
-        let upcomingTasks = viewModel.tasks.filter { task in
-            if let dueDate = task.dueDate {
-                return calendar.isDateInToday(dueDate) || dueDate > Date()
+        // Determine filtering logic based on selected date
+        let filteredTasks: [TaskEntity]
+
+        if let filterDate = selectedDateForFiltering {
+            let isToday = calendar.isDateInToday(filterDate)
+            let isPast = filterDate < calendar.startOfDay(for: now)
+
+            if isToday {
+                // If today is selected, show all tasks >= today
+                filteredTasks = viewModel.tasks.filter { task in
+                    if let dueDate = task.dueDate {
+                        return calendar.isDateInToday(dueDate) || dueDate > now
+                    }
+                    if let scheduledTime = task.scheduledTime {
+                        return calendar.isDateInToday(scheduledTime) || scheduledTime > now
+                    }
+                    return task.dueDate == nil && task.scheduledTime == nil && !task.isCompleted
+                }
+            } else if isPast {
+                // If past date is selected, show only tasks for that specific date
+                filteredTasks = viewModel.tasks.filter { task in
+                    if let dueDate = task.dueDate {
+                        return calendar.isDate(dueDate, inSameDayAs: filterDate)
+                    }
+                    if let scheduledTime = task.scheduledTime {
+                        return calendar.isDate(scheduledTime, inSameDayAs: filterDate)
+                    }
+                    return false
+                }
+            } else {
+                // If future date is selected, show only tasks for that specific date
+                filteredTasks = viewModel.tasks.filter { task in
+                    if let dueDate = task.dueDate {
+                        return calendar.isDate(dueDate, inSameDayAs: filterDate)
+                    }
+                    if let scheduledTime = task.scheduledTime {
+                        return calendar.isDate(scheduledTime, inSameDayAs: filterDate)
+                    }
+                    return false
+                }
             }
-            if let scheduledTime = task.scheduledTime {
-                return calendar.isDateInToday(scheduledTime) || scheduledTime > Date()
+        } else {
+            // No date selected, show all upcoming tasks (today and future)
+            filteredTasks = viewModel.tasks.filter { task in
+                if let dueDate = task.dueDate {
+                    return calendar.isDateInToday(dueDate) || dueDate > now
+                }
+                if let scheduledTime = task.scheduledTime {
+                    return calendar.isDateInToday(scheduledTime) || scheduledTime > now
+                }
+                return task.dueDate == nil && task.scheduledTime == nil && !task.isCompleted
             }
-            return task.dueDate == nil && task.scheduledTime == nil && !task.isCompleted
         }
 
         // Group tasks by date
-        let grouped = Dictionary(grouping: upcomingTasks) { task -> Date in
+        let grouped = Dictionary(grouping: filteredTasks) { task -> Date in
             if let dueDate = task.dueDate {
                 return calendar.startOfDay(for: dueDate)
             }
             if let scheduledTime = task.scheduledTime {
                 return calendar.startOfDay(for: scheduledTime)
             }
-            return calendar.startOfDay(for: Date())
+            return calendar.startOfDay(for: now)
         }
 
         // Sort by date and return as array of tuples
@@ -156,18 +201,18 @@ struct UpcomingView: View {
 
     // MARK: - Upcoming View
     private var upcomingView: some View {
-        VStack(spacing: 0) {
-            // Mini Calendar
-            miniCalendar
+        ScrollView {
+            VStack(spacing: 0) {
+                // Mini Calendar
+                miniCalendar
 
-            Divider()
+                Divider()
 
-            // Upcoming Tasks List
-            ScrollView {
-                LazyVStack(spacing: 16, pinnedViews: [.sectionHeaders]) {
+                // Upcoming Tasks List
+                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                     ForEach(groupedTasks, id: \.date) { group in
                         Section {
-                            VStack(spacing: 8) {
+                            VStack(spacing: 0) {
                                 ForEach(group.tasks) { task in
                                     NavigationLink {
                                         TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
@@ -273,6 +318,7 @@ struct UpcomingView: View {
         return Button {
             withAnimation {
                 selectedDate = date
+                selectedDateForFiltering = date
             }
             HapticManager.shared.selectionChanged()
         } label: {
@@ -596,129 +642,47 @@ struct UpcomingTaskRow: View {
     let onToggleCompletion: () -> Void
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Priority Accent Bar (left edge)
-            if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority) {
-                Rectangle()
-                    .fill(priority.color)
-                    .frame(width: 4)
-                    .opacity(task.isCompleted ? 0.4 : 1.0)
+        HStack(spacing: 12) {
+            // Completion Button
+            Button(action: onToggleCompletion) {
+                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(task.isCompleted ? .green : .gray.opacity(0.3))
+            }
+            .buttonStyle(.plain)
+
+            // Task Content
+            VStack(alignment: .leading, spacing: 6) {
+                // Title
+                Text(task.title)
+                    .font(.body)
+                    .strikethrough(task.isCompleted)
+                    .foregroundStyle(task.isCompleted ? .secondary : .primary)
+                    .lineLimit(2)
+
+                // Scheduled Time
+                if let formattedTime = task.formattedScheduledTime {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.fill")
+                            .font(.caption2)
+                        Text(formattedTime)
+                            .font(.caption.weight(.medium))
+                    }
+                    .foregroundStyle(.blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(Color.blue.opacity(0.12))
+                    )
+                    .opacity(task.isCompleted ? 0.5 : 1.0)
+                }
             }
 
-            HStack(spacing: 10) {
-                // Completion Button
-                Button(action: onToggleCompletion) {
-                    Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundStyle(task.isCompleted ? .green : .gray)
-                }
-                .buttonStyle(.plain)
-
-                // Task Content
-                VStack(alignment: .leading, spacing: 6) {
-                    // Title Row with timer indicator
-                    HStack(alignment: .center, spacing: 8) {
-                        Text(task.title)
-                            .font(.body)
-                            .strikethrough(task.isCompleted)
-                            .foregroundStyle(task.isCompleted ? .secondary : .primary)
-                            .lineLimit(2)
-
-                        Spacer(minLength: 4)
-
-                        // Small timer icon indicator (only when timer is active for this task)
-                        if isTimerActive {
-                            Image(systemName: "timer")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                                .symbolEffect(.pulse, options: .repeating)
-                        }
-                    }
-
-                    // Metadata Pills - Prioritize time information
-                    HStack(spacing: 6) {
-                        // Scheduled Time/Due Date - MOST PROMINENT
-                        if let formattedTime = task.formattedScheduledTime {
-                            HStack(spacing: 4) {
-                                Image(systemName: "clock.fill")
-                                    .font(.caption)
-                                Text(formattedTime)
-                                    .font(.caption.weight(.semibold))
-                            }
-                            .foregroundStyle(.blue)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                Capsule()
-                                    .fill(Color.blue.opacity(0.15))
-                                    .overlay(
-                                        Capsule()
-                                            .stroke(Color.blue.opacity(0.3), lineWidth: 1)
-                                    )
-                            )
-                            .opacity(task.isCompleted ? 0.5 : 1.0)
-                        }
-
-                        // Priority Pill - With icon for better visibility
-                        if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority) {
-                            HStack(spacing: 3) {
-                                Image(systemName: "flag.fill")
-                                    .font(.caption2)
-                                Text(priority.displayName)
-                                    .font(.caption2.weight(.semibold))
-                            }
-                            .foregroundStyle(priority.color)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
-                            .background(
-                                Capsule()
-                                    .fill(priority.color.opacity(0.15))
-                                    .overlay(
-                                        Capsule()
-                                            .stroke(priority.color.opacity(0.4), lineWidth: 1.5)
-                                    )
-                            )
-                            .opacity(task.isCompleted ? 0.5 : 1.0)
-                        }
-
-                        // Recurrence Pill
-                        if task.isRecurring, let recurrenceDesc = task.recurrenceDescription {
-                            HStack(spacing: 3) {
-                                Image(systemName: "repeat")
-                                    .font(.caption2)
-                                Text(recurrenceDesc)
-                                    .font(.caption2)
-                            }
-                            .foregroundStyle(.purple)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(Capsule().fill(Color.purple.opacity(0.15)))
-                            .opacity(task.isCompleted ? 0.5 : 1.0)
-                        }
-
-                        // List Pill
-                        if let list = task.taskList {
-                            HStack(spacing: 3) {
-                                Image(systemName: list.iconName ?? "list.bullet")
-                                    .font(.caption2)
-                                Text(list.name)
-                                    .font(.caption2)
-                            }
-                            .foregroundStyle(list.color)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(Capsule().fill(list.color.opacity(0.15)))
-                            .opacity(task.isCompleted ? 0.5 : 1.0)
-                        }
-                    }
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(.leading, task.priority > 0 ? 10 : 0)
-            .padding(.trailing, 10)
-            .padding(.vertical, 12)
+            Spacer()
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color(.secondarySystemBackground))
