@@ -19,6 +19,7 @@ struct TodayView: View {
     @State private var showConfetti = false
     @State private var quickTaskTitle = ""
     @State private var sheetPresentation: SheetType?
+    @State private var showCompletedTasks = false
     @FocusState private var isQuickAddFocused: Bool
 
     enum SheetType: Identifiable {
@@ -81,7 +82,15 @@ struct TodayView: View {
 
                     // Completed Section
                     if !completedTasks.isEmpty {
-                        completedSection
+                        VStack(alignment: .leading, spacing: 8) {
+                            // Always show the toggle button
+                            showCompletedButton
+
+                            // Show/hide completed tasks with animation
+                            if showCompletedTasks {
+                                completedSection
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -184,6 +193,25 @@ struct TodayView: View {
                     .onTapGesture {
                         sheetPresentation = .taskDetail(task)
                     }
+                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                        Button {
+                            Task {
+                                await toggleTaskCompletion(task)
+                            }
+                        } label: {
+                            Label("Complete", systemImage: "checkmark")
+                        }
+                        .tint(.green)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            Task {
+                                await viewModel.deleteTask(task)
+                            }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
                     .contextMenu {
                         Button {
                             sheetPresentation = .taskDetail(task)
@@ -191,13 +219,83 @@ struct TodayView: View {
                             Label("View Details", systemImage: "info.circle")
                         }
 
+                        Divider()
+
                         Button {
                             Task {
                                 await toggleTaskCompletion(task)
                             }
                         } label: {
-                            Label("Complete", systemImage: "checkmark.circle")
+                            Label(task.isCompleted ? "Mark Incomplete" : "Complete", systemImage: "checkmark.circle")
                         }
+
+                        Menu {
+                            Button {
+                                Task {
+                                    await scheduleTaskForLater(task, hours: 1)
+                                }
+                            } label: {
+                                Label("In 1 Hour", systemImage: "clock")
+                            }
+
+                            Button {
+                                Task {
+                                    await scheduleTaskForLater(task, hours: 3)
+                                }
+                            } label: {
+                                Label("In 3 Hours", systemImage: "clock")
+                            }
+
+                            Button {
+                                Task {
+                                    await scheduleTaskForTomorrow(task)
+                                }
+                            } label: {
+                                Label("Tomorrow", systemImage: "calendar")
+                            }
+
+                            Button {
+                                Task {
+                                    await scheduleTaskForNextWeek(task)
+                                }
+                            } label: {
+                                Label("Next Week", systemImage: "calendar")
+                            }
+                        } label: {
+                            Label("Reschedule", systemImage: "clock.arrow.circlepath")
+                        }
+
+                        Menu {
+                            ForEach(Constants.TaskPriority.allCases, id: \.rawValue) { priority in
+                                Button {
+                                    Task {
+                                        await updateTaskPriority(task, priority: priority.rawValue)
+                                    }
+                                } label: {
+                                    Label(priority.displayName, systemImage: task.priority == priority.rawValue ? "checkmark" : "")
+                                }
+                            }
+                        } label: {
+                            Label("Change Priority", systemImage: "flag")
+                        }
+
+                        if !viewModel.taskLists.isEmpty {
+                            Menu {
+                                ForEach(viewModel.taskLists) { list in
+                                    Button {
+                                        Task {
+                                            await moveTaskToList(task, list: list)
+                                        }
+                                    } label: {
+                                        Label(list.name, systemImage: list.iconName ?? "list.bullet")
+                                    }
+                                }
+                            } label: {
+                                Label("Move to List", systemImage: "folder")
+                            }
+                        }
+
+                        Divider()
 
                         Button(role: .destructive) {
                             Task {
@@ -222,7 +320,8 @@ struct TodayView: View {
                         await toggleTaskCompletion(task)
                     }
                 }
-                .opacity(0.7)
+                .opacity(0.4)
+                .scaleEffect(0.98)
                 .onTapGesture {
                     sheetPresentation = .taskDetail(task)
                 }
@@ -235,17 +334,65 @@ struct TodayView: View {
         EmptyStateView.noTasks()
     }
 
+    // MARK: - Completed Toggle Button
+    private var showCompletedButton: some View {
+        Button {
+            withAnimation(.spring(response: Constants.Animation.Spring.response, dampingFraction: Constants.Animation.Spring.dampingFraction)) {
+                showCompletedTasks.toggle()
+            }
+            HapticManager.shared.lightImpact()
+        } label: {
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("\(completedTasks.count) completed")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(showCompletedTasks ? 180 : 0))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: Constants.UI.cornerRadius))
+            .shadow(color: .black.opacity(0.04), radius: 4, y: 1)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(completedTasks.count) completed tasks")
+        .accessibilityHint(showCompletedTasks ? "Tap to collapse completed tasks" : "Tap to expand and view completed tasks")
+    }
+
     // MARK: - Methods
     private func addQuickTask() {
         let trimmedTitle = quickTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return }
 
         Task {
-            // Quick add sets due date to today (so it appears in Today view)
+            // Parse natural language input
+            let parsed = NaturalLanguageParser.parse(trimmedTitle)
+
+            // Use parsed metadata, fallback to defaults
+            let finalTitle = parsed.cleanTitle.isEmpty ? trimmedTitle : parsed.cleanTitle
+            let finalDueDate = parsed.dueDate ?? Calendar.current.startOfDay(for: Date())
+            let finalPriority = parsed.priority
+
+            // Find matching list if listHint was provided
+            var matchingList: TaskListEntity?
+            if let listHint = parsed.listHint {
+                matchingList = viewModel.taskLists.first { list in
+                    list.name.lowercased().contains(listHint.lowercased())
+                }
+            }
+
             await viewModel.createTask(
-                title: trimmedTitle,
-                dueDate: Calendar.current.startOfDay(for: Date()),
-                priority: 0
+                title: finalTitle,
+                dueDate: finalDueDate,
+                scheduledTime: parsed.scheduledTime,
+                priority: finalPriority,
+                list: matchingList
             )
 
             await MainActor.run {
@@ -268,6 +415,38 @@ struct TodayView: View {
                 HapticManager.shared.mediumImpact()
             }
         }
+    }
+
+    // MARK: - Quick Action Helpers
+
+    private func scheduleTaskForLater(_ task: TaskEntity, hours: Int) async {
+        let newTime = Calendar.current.date(byAdding: .hour, value: hours, to: Date())
+        await viewModel.scheduleTask(task, startTime: newTime, endTime: nil)
+        HapticManager.shared.lightImpact()
+    }
+
+    private func scheduleTaskForTomorrow(_ task: TaskEntity) async {
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date())
+        let tomorrowStart = Calendar.current.startOfDay(for: tomorrow ?? Date())
+        await viewModel.scheduleTask(task, startTime: tomorrowStart, endTime: nil)
+        HapticManager.shared.lightImpact()
+    }
+
+    private func scheduleTaskForNextWeek(_ task: TaskEntity) async {
+        let nextWeek = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: Date())
+        let nextWeekStart = Calendar.current.startOfDay(for: nextWeek ?? Date())
+        await viewModel.scheduleTask(task, startTime: nextWeekStart, endTime: nil)
+        HapticManager.shared.lightImpact()
+    }
+
+    private func updateTaskPriority(_ task: TaskEntity, priority: Int16) async {
+        await viewModel.updateTask(task, priority: priority)
+        HapticManager.shared.lightImpact()
+    }
+
+    private func moveTaskToList(_ task: TaskEntity, list: TaskListEntity) async {
+        await viewModel.updateTask(task, list: list)
+        HapticManager.shared.lightImpact()
     }
 }
 

@@ -35,17 +35,17 @@ struct ModernTaskCardView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(task.isCompleted ? "Completed" : "Not completed")
                 .accessibilityHint(task.isCompleted ? "Tap to mark as incomplete" : "Tap to mark as complete")
-                .accessibilityValue(task.title ?? "Untitled task")
+                .accessibilityValue(task.title)
 
                 // Task content
                 VStack(alignment: .leading, spacing: 4) {
                     Text(task.title)
-                        .font(.subheadline.weight(.medium))
+                        .font(task.isCompleted ? .footnote : .subheadline.weight(.medium))
                         .foregroundStyle(task.isCompleted ? .secondary : .primary)
                         .strikethrough(task.isCompleted)
 
-                    // Metadata pills
-                    if hasMetadata {
+                    // Metadata pills (hide for completed tasks to reduce visual weight)
+                    if hasMetadata && !task.isCompleted {
                         HStack(spacing: 5) {
                             // Priority pill
                             if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority) {
@@ -117,7 +117,7 @@ struct ModernTaskCardView: View {
             }
             .padding(.leading, task.priority > 0 ? 8 : 10)
             .padding(.trailing, 10)
-            .padding(.vertical, 8)
+            .padding(.vertical, task.isCompleted ? 4 : 8)
         }
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: Constants.UI.cornerRadius))
@@ -134,7 +134,7 @@ struct ModernTaskCardView: View {
     }
 
     private var accessibilityTaskLabel: String {
-        var label = task.title ?? "Untitled task"
+        var label = task.title
 
         if task.isCompleted {
             label += ", completed"
