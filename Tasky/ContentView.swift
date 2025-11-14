@@ -20,32 +20,39 @@ struct ContentView: View {
             // Today Tab - Enhanced with completion ring and celebrations
             TodayView(viewModel: viewModel)
                 .tabItem {
-                    Label("Today", systemImage: "house.fill")
+                    Image(systemName: "house.fill")
+                        .symbolRenderingMode(Constants.IconRendering.multicolor)
+                    Text("Today")
                 }
                 .tag(0)
 
             // Calendar Tab - Unified view with Day/Week/Month modes
-            UpcomingView(viewModel: viewModel)
+            CalendarMainView(viewModel: viewModel)
                 .tabItem {
-                    Label("Calendar", systemImage: "calendar")
+                    Image(systemName: "calendar")
+                        .symbolRenderingMode(Constants.IconRendering.multicolor)
+                    Text("Calendar")
                 }
                 .tag(1)
 
             // AI Assistant Tab - Chat-based task creation
             AIChatView(dataService: viewModel.dataService)
                 .tabItem {
-                    Label("AI", systemImage: "sparkles")
+                    Image(systemName: "sparkles")
+                        .symbolRenderingMode(Constants.IconRendering.multicolor)
+                    Text("AI Coach")
                 }
                 .tag(2)
 
             // Progress Tab - Stats, streaks, and achievements
             ProgressTabView(viewModel: viewModel)
                 .tabItem {
-                    Label("Progress", systemImage: "chart.bar.fill")
+                    Image(systemName: "chart.bar.fill")
+                        .symbolRenderingMode(Constants.IconRendering.multicolor)
+                    Text("Progress")
                 }
                 .tag(3)
         }
-        .tint(.accentColor)
     }
 }
 
