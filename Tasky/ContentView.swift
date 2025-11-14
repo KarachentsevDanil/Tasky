@@ -13,6 +13,7 @@ struct ContentView: View {
     // MARK: - State
     @StateObject private var viewModel = TaskListViewModel()
     @State private var selectedTab = 0
+    @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system
 
     // MARK: - Body
     var body: some View {
@@ -44,15 +45,16 @@ struct ContentView: View {
                 }
                 .tag(2)
 
-            // Progress Tab - Stats, streaks, and achievements
-            ProgressTabView(viewModel: viewModel)
+            // Browse Tab - Progress, Lists, and Settings
+            BrowseTabView(viewModel: viewModel)
                 .tabItem {
-                    Image(systemName: "chart.bar.fill")
+                    Image(systemName: "square.grid.2x2.fill")
                         .symbolRenderingMode(Constants.IconRendering.multicolor)
-                    Text("Progress")
+                    Text("Browse")
                 }
                 .tag(3)
         }
+        .preferredColorScheme(appearanceMode.colorScheme)
     }
 }
 
