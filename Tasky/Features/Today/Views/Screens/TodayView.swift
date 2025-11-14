@@ -17,6 +17,8 @@ struct TodayView: View {
 
     // MARK: - State
     @State private var showConfetti = false
+    @State private var showAllDoneCelebration = false
+    @State private var completedTasksCount = 0
     @State private var quickTaskTitle = ""
     @State private var sheetPresentation: SheetType?
     @State private var showCompletedTasks = false
@@ -34,6 +36,41 @@ struct TodayView: View {
         }
     }
 
+    // MARK: - Task Grouping
+    enum TaskGroup: Int, CaseIterable {
+        case overdue
+        case now
+        case laterToday
+        case noTime
+
+        var title: String {
+            switch self {
+            case .overdue: return "Overdue"
+            case .now: return "Now"
+            case .laterToday: return "Later Today"
+            case .noTime: return "Anytime"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .overdue: return "exclamationmark.circle.fill"
+            case .now: return "circle.fill"
+            case .laterToday: return "clock.fill"
+            case .noTime: return "tray.fill"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .overdue: return .red
+            case .now: return .blue
+            case .laterToday: return .orange
+            case .noTime: return .secondary
+            }
+        }
+    }
+
     // MARK: - Computed Properties
     private var todayTasks: [TaskEntity] {
         viewModel.tasks.filter { !$0.isCompleted }
@@ -47,6 +84,40 @@ struct TodayView: View {
 
                 return task1.priority > task2.priority
             }
+    }
+
+    private var groupedTasks: [(group: TaskGroup, tasks: [TaskEntity])] {
+        let now = Date()
+        let calendar = Calendar.current
+        let twoHoursFromNow = calendar.date(byAdding: .hour, value: 2, to: now) ?? now
+        let endOfToday = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: now) ?? now
+
+        var grouped: [TaskGroup: [TaskEntity]] = [:]
+
+        for task in todayTasks {
+            let scheduledTime = task.scheduledTime ?? task.dueDate
+
+            if let time = scheduledTime {
+                if time < now {
+                    grouped[.overdue, default: []].append(task)
+                } else if time <= twoHoursFromNow {
+                    grouped[.now, default: []].append(task)
+                } else if time <= endOfToday {
+                    grouped[.laterToday, default: []].append(task)
+                } else {
+                    grouped[.noTime, default: []].append(task)
+                }
+            } else {
+                grouped[.noTime, default: []].append(task)
+            }
+        }
+
+        // Return groups in priority order with tasks sorted by priority
+        return TaskGroup.allCases.compactMap { group in
+            guard let tasks = grouped[group], !tasks.isEmpty else { return nil }
+            let sortedTasks = tasks.sorted { $0.priority > $1.priority }
+            return (group, sortedTasks)
+        }
     }
 
     private var completedTasks: [TaskEntity] {
@@ -112,6 +183,12 @@ struct TodayView: View {
                 }
             }
             .confetti(isPresented: $showConfetti)
+            .fullScreenCover(isPresented: $showAllDoneCelebration) {
+                AllDoneCelebrationView(
+                    tasksCompletedCount: completedTasksCount,
+                    onShare: shareAchievement
+                )
+            }
             .alert("Error", isPresented: $viewModel.showError) {
                 Button("OK") {
                     viewModel.showError = false
@@ -173,142 +250,190 @@ struct TodayView: View {
             taskTitle: $quickTaskTitle,
             isFocused: $isQuickAddFocused,
             onAdd: addQuickTask,
-            onShowAdvanced: { sheetPresentation = .addTask }
+            onShowAdvanced: { sheetPresentation = .addTask },
+            onShowAIChat: {
+                // Navigate to AI chat tab
+                // Since we can't directly change tabs from here, we'll show a hint
+                // In a real implementation, you'd use a binding or notification
+            }
         )
     }
 
     // MARK: - Tasks Section
     private var tasksSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-
+        VStack(alignment: .leading, spacing: 12) {
             if todayTasks.isEmpty {
                 emptyStateView
             } else {
-                ForEach(todayTasks) { task in
-                    ModernTaskCardView(task: task) {
-                        Task {
-                            await toggleTaskCompletion(task)
+                ForEach(groupedTasks, id: \.group) { groupData in
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Section Header
+                        HStack(spacing: 6) {
+                            Image(systemName: groupData.group.icon)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(groupData.group.color)
+
+                            Text(groupData.group.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(groupData.group.color)
+
+                            Text("(\(groupData.tasks.count))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Spacer()
                         }
-                    }
-                    .onTapGesture {
-                        sheetPresentation = .taskDetail(task)
-                    }
-                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                        Button {
-                            Task {
-                                await toggleTaskCompletion(task)
-                            }
-                        } label: {
-                            Label("Complete", systemImage: "checkmark")
-                        }
-                        .tint(.green)
-                    }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
-                            Task {
-                                await viewModel.deleteTask(task)
-                            }
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                    }
-                    .contextMenu {
-                        Button {
-                            sheetPresentation = .taskDetail(task)
-                        } label: {
-                            Label("View Details", systemImage: "info.circle")
-                        }
+                        .padding(.horizontal, 4)
+                        .padding(.top, groupData.group == .overdue ? 0 : 8)
 
-                        Divider()
-
-                        Button {
-                            Task {
-                                await toggleTaskCompletion(task)
-                            }
-                        } label: {
-                            Label(task.isCompleted ? "Mark Incomplete" : "Complete", systemImage: "checkmark.circle")
-                        }
-
-                        Menu {
-                            Button {
-                                Task {
-                                    await scheduleTaskForLater(task, hours: 1)
-                                }
-                            } label: {
-                                Label("In 1 Hour", systemImage: "clock")
-                            }
-
-                            Button {
-                                Task {
-                                    await scheduleTaskForLater(task, hours: 3)
-                                }
-                            } label: {
-                                Label("In 3 Hours", systemImage: "clock")
-                            }
-
-                            Button {
-                                Task {
-                                    await scheduleTaskForTomorrow(task)
-                                }
-                            } label: {
-                                Label("Tomorrow", systemImage: "calendar")
-                            }
-
-                            Button {
-                                Task {
-                                    await scheduleTaskForNextWeek(task)
-                                }
-                            } label: {
-                                Label("Next Week", systemImage: "calendar")
-                            }
-                        } label: {
-                            Label("Reschedule", systemImage: "clock.arrow.circlepath")
-                        }
-
-                        Menu {
-                            ForEach(Constants.TaskPriority.allCases, id: \.rawValue) { priority in
-                                Button {
-                                    Task {
-                                        await updateTaskPriority(task, priority: priority.rawValue)
-                                    }
-                                } label: {
-                                    Label(priority.displayName, systemImage: task.priority == priority.rawValue ? "checkmark" : "")
-                                }
-                            }
-                        } label: {
-                            Label("Change Priority", systemImage: "flag")
-                        }
-
-                        if !viewModel.taskLists.isEmpty {
-                            Menu {
-                                ForEach(viewModel.taskLists) { list in
-                                    Button {
-                                        Task {
-                                            await moveTaskToList(task, list: list)
-                                        }
-                                    } label: {
-                                        Label(list.name, systemImage: list.iconName ?? "list.bullet")
-                                    }
-                                }
-                            } label: {
-                                Label("Move to List", systemImage: "folder")
-                            }
-                        }
-
-                        Divider()
-
-                        Button(role: .destructive) {
-                            Task {
-                                await viewModel.deleteTask(task)
-                            }
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+                        // Tasks in this group
+                        ForEach(groupData.tasks) { task in
+                            taskRow(for: task, in: groupData.group)
                         }
                     }
                 }
             }
         }
         .padding(.top, 4)
+    }
+
+    // MARK: - Task Row
+    @ViewBuilder
+    private func taskRow(for task: TaskEntity, in group: TaskGroup) -> some View {
+        ModernTaskCardView(task: task) {
+            Task {
+                await toggleTaskCompletion(task)
+            }
+        }
+        .overlay(
+            // Add subtle red tint for overdue tasks
+            group == .overdue ?
+            RoundedRectangle(cornerRadius: Constants.UI.cornerRadius)
+                .stroke(Color.red.opacity(0.3), lineWidth: 1)
+            : nil
+        )
+        .overlay(
+            // Add blue highlight for "Now" tasks
+            group == .now ?
+            RoundedRectangle(cornerRadius: Constants.UI.cornerRadius)
+                .stroke(Color.blue.opacity(0.4), lineWidth: 2)
+            : nil
+        )
+        .onTapGesture {
+            sheetPresentation = .taskDetail(task)
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button {
+                Task {
+                    await toggleTaskCompletion(task)
+                }
+            } label: {
+                Label("Complete", systemImage: "checkmark")
+            }
+            .tint(.green)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                Task {
+                    await viewModel.deleteTask(task)
+                }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .contextMenu {
+            Button {
+                sheetPresentation = .taskDetail(task)
+            } label: {
+                Label("View Details", systemImage: "info.circle")
+            }
+
+            Divider()
+
+            Button {
+                Task {
+                    await toggleTaskCompletion(task)
+                }
+            } label: {
+                Label(task.isCompleted ? "Mark Incomplete" : "Complete", systemImage: "checkmark.circle")
+            }
+
+            Menu {
+                Button {
+                    Task {
+                        await scheduleTaskForLater(task, hours: 1)
+                    }
+                } label: {
+                    Label("In 1 Hour", systemImage: "clock")
+                }
+
+                Button {
+                    Task {
+                        await scheduleTaskForLater(task, hours: 3)
+                    }
+                } label: {
+                    Label("In 3 Hours", systemImage: "clock")
+                }
+
+                Button {
+                    Task {
+                        await scheduleTaskForTomorrow(task)
+                    }
+                } label: {
+                    Label("Tomorrow", systemImage: "calendar")
+                }
+
+                Button {
+                    Task {
+                        await scheduleTaskForNextWeek(task)
+                    }
+                } label: {
+                    Label("Next Week", systemImage: "calendar")
+                }
+            } label: {
+                Label("Reschedule", systemImage: "clock.arrow.circlepath")
+            }
+
+            Menu {
+                ForEach(Constants.TaskPriority.allCases, id: \.rawValue) { priority in
+                    Button {
+                        Task {
+                            await updateTaskPriority(task, priority: priority.rawValue)
+                        }
+                    } label: {
+                        Label(priority.displayName, systemImage: task.priority == priority.rawValue ? "checkmark" : "")
+                    }
+                }
+            } label: {
+                Label("Change Priority", systemImage: "flag")
+            }
+
+            if !viewModel.taskLists.isEmpty {
+                Menu {
+                    ForEach(viewModel.taskLists) { list in
+                        Button {
+                            Task {
+                                await moveTaskToList(task, list: list)
+                            }
+                        } label: {
+                            Label(list.name, systemImage: list.iconName ?? "list.bullet")
+                        }
+                    }
+                } label: {
+                    Label("Move to List", systemImage: "folder")
+                }
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                Task {
+                    await viewModel.deleteTask(task)
+                }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
     }
 
     // MARK: - Completed Section
@@ -331,7 +456,7 @@ struct TodayView: View {
 
     // MARK: - Empty State
     private var emptyStateView: some View {
-        EmptyStateView.noTasks()
+        TodayEmptyStateView()
     }
 
     // MARK: - Completed Toggle Button
@@ -404,17 +529,43 @@ struct TodayView: View {
 
     private func toggleTaskCompletion(_ task: TaskEntity) async {
         let wasCompleted = task.isCompleted
+        let remainingTasksBeforeToggle = todayTasks.count
 
         await viewModel.toggleTaskCompletion(task)
 
         await MainActor.run {
             if !wasCompleted {
+                // Task was just completed
                 HapticManager.shared.success()
                 showConfetti = true
+
+                // Check if this was the last task
+                if remainingTasksBeforeToggle == 1 {
+                    // All tasks completed!
+                    completedTasksCount = completedTasks.count
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        showAllDoneCelebration = true
+                    }
+                }
             } else {
                 HapticManager.shared.mediumImpact()
             }
         }
+    }
+
+    private func shareAchievement() {
+        let text = "🎉 I completed \(completedTasksCount) tasks today with Tasky!"
+        let activityVC = UIActivityViewController(
+            activityItems: [text],
+            applicationActivities: nil
+        )
+
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootVC = windowScene.windows.first?.rootViewController {
+            rootVC.present(activityVC, animated: true)
+        }
+
+        HapticManager.shared.lightImpact()
     }
 
     // MARK: - Quick Action Helpers
