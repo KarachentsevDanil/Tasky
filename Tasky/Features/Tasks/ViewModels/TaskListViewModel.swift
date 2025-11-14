@@ -24,6 +24,21 @@ class TaskListViewModel: ObservableObject {
     let dataService: DataService
     private var cancellables = Set<AnyCancellable>()
 
+    // MARK: - Undo Support
+    private var pendingDeletion: PendingTaskDeletion?
+    private var pendingCompletion: PendingTaskCompletion?
+
+    struct PendingTaskDeletion {
+        let taskObjectID: NSManagedObjectID
+        let timer: DispatchWorkItem
+    }
+
+    struct PendingTaskCompletion {
+        let taskObjectID: NSManagedObjectID
+        let wasCompleted: Bool
+        let timer: DispatchWorkItem
+    }
+
     // MARK: - Filter Types
     enum FilterType {
         case all
@@ -164,7 +179,7 @@ class TaskListViewModel: ObservableObject {
         }
     }
 
-    /// Toggle task completion
+    /// Toggle task completion immediately (no undo)
     func toggleTaskCompletion(_ task: TaskEntity) async {
         do {
             try dataService.toggleTaskCompletion(task)
@@ -174,7 +189,67 @@ class TaskListViewModel: ObservableObject {
         }
     }
 
-    /// Delete a task
+    /// Toggle task completion with undo support
+    func toggleTaskCompletionWithUndo(_ task: TaskEntity, delay: TimeInterval = 5.0) async {
+        // Cancel any pending completion
+        cancelPendingCompletion()
+
+        let wasCompleted = task.isCompleted
+        let taskObjectID = task.objectID
+
+        // Toggle immediately in UI
+        do {
+            try dataService.toggleTaskCompletion(task)
+            await loadTasks()
+        } catch {
+            handleError(error)
+            return
+        }
+
+        // Schedule auto-commit (to prevent reverting if user does nothing)
+        let workItem = DispatchWorkItem { [weak self] in
+            Task { @MainActor [weak self] in
+                // Just clear the pending state - change is already saved
+                self?.pendingCompletion = nil
+            }
+        }
+
+        pendingCompletion = PendingTaskCompletion(taskObjectID: taskObjectID, wasCompleted: wasCompleted, timer: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    /// Undo the pending completion toggle
+    func undoCompletion() async {
+        guard let pending = pendingCompletion else { return }
+
+        // Cancel the timer
+        pending.timer.cancel()
+
+        // Fetch the task by ObjectID and toggle back
+        guard let task = dataService.fetchTask(by: pending.taskObjectID) else {
+            pendingCompletion = nil
+            return
+        }
+
+        // Toggle back to original state
+        do {
+            try dataService.toggleTaskCompletion(task)
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+
+        // Clear pending completion
+        pendingCompletion = nil
+    }
+
+    /// Cancel any pending completion
+    private func cancelPendingCompletion() {
+        pendingCompletion?.timer.cancel()
+        pendingCompletion = nil
+    }
+
+    /// Delete a task immediately (no undo)
     func deleteTask(_ task: TaskEntity) async {
         do {
             try dataService.deleteTask(task)
@@ -182,6 +257,65 @@ class TaskListViewModel: ObservableObject {
         } catch {
             handleError(error)
         }
+    }
+
+    /// Delete a task with undo support (delayed deletion)
+    func deleteTaskWithUndo(_ task: TaskEntity, delay: TimeInterval = 5.0) async {
+        // Cancel any pending deletion
+        cancelPendingDeletion()
+
+        let taskObjectID = task.objectID
+
+        // Hide the task immediately from UI
+        tasks.removeAll { $0.id == task.id }
+
+        // Schedule actual deletion
+        let workItem = DispatchWorkItem { [weak self] in
+            Task { @MainActor [weak self] in
+                await self?.commitDeletion(taskObjectID)
+            }
+        }
+
+        pendingDeletion = PendingTaskDeletion(taskObjectID: taskObjectID, timer: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    /// Undo the pending deletion
+    func undoDelete() async {
+        guard let pending = pendingDeletion else { return }
+
+        // Cancel the timer
+        pending.timer.cancel()
+
+        // Clear pending deletion first
+        pendingDeletion = nil
+
+        // Restore the task to UI by reloading
+        await loadTasks()
+    }
+
+    /// Commit the actual deletion after timer expires
+    private func commitDeletion(_ taskObjectID: NSManagedObjectID) async {
+        // Fetch the task by ObjectID
+        guard let task = dataService.fetchTask(by: taskObjectID) else {
+            pendingDeletion = nil
+            return
+        }
+
+        do {
+            try dataService.deleteTask(task)
+            pendingDeletion = nil
+        } catch {
+            // If deletion fails, restore the task
+            await loadTasks()
+            handleError(error)
+        }
+    }
+
+    /// Cancel any pending deletion
+    private func cancelPendingDeletion() {
+        pendingDeletion?.timer.cancel()
+        pendingDeletion = nil
     }
 
     /// Delete tasks at offsets

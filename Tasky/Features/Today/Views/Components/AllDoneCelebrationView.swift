@@ -85,14 +85,6 @@ struct AllDoneCelebrationView: View {
 
                     if showContent {
                         VStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 48))
-                                .foregroundStyle(.green)
-
-                            Text("\(tasksCompletedCount)")
-                                .font(.system(size: 32, weight: .bold))
-                                .foregroundStyle(.primary)
-
                             Text("completed")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -104,10 +96,6 @@ struct AllDoneCelebrationView: View {
                 // Celebration Message
                 if showContent {
                     VStack(spacing: 12) {
-                        Text("All Done!")
-                            .font(.system(size: 36, weight: .bold))
-                            .foregroundStyle(.primary)
-
                         Text("Time to relax and recharge")
                             .font(.title3)
                             .foregroundStyle(.secondary)

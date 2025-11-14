@@ -145,6 +145,15 @@ class DataService {
         try persistenceController.save(context: viewContext)
     }
 
+    /// Fetch a task by its ObjectID
+    func fetchTask(by objectID: NSManagedObjectID) -> TaskEntity? {
+        do {
+            return try viewContext.existingObject(with: objectID) as? TaskEntity
+        } catch {
+            return nil
+        }
+    }
+
     /// Fetch all tasks
     func fetchAllTasks() throws -> [TaskEntity] {
         let fetchRequest: NSFetchRequest<TaskEntity> = TaskEntity.fetchRequest()

@@ -22,6 +22,7 @@ struct TodayView: View {
     @State private var quickTaskTitle = ""
     @State private var sheetPresentation: SheetType?
     @State private var showCompletedTasks = false
+    @State private var undoAction: UndoAction?
     @FocusState private var isQuickAddFocused: Bool
 
     enum SheetType: Identifiable {
@@ -32,6 +33,25 @@ struct TodayView: View {
             switch self {
             case .addTask: return "addTask"
             case .taskDetail(let task): return "taskDetail-\(task.id)"
+            }
+        }
+    }
+
+    enum UndoAction {
+        case deletion
+        case completion
+
+        var message: String {
+            switch self {
+            case .deletion: return "Task deleted"
+            case .completion: return "Task completed"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .deletion: return "trash"
+            case .completion: return "checkmark.circle.fill"
             }
         }
     }
@@ -183,6 +203,29 @@ struct TodayView: View {
                 }
             }
             .confetti(isPresented: $showConfetti)
+            .undoToast(
+                isPresented: Binding(
+                    get: { undoAction != nil },
+                    set: { if !$0 { undoAction = nil } }
+                ),
+                icon: undoAction?.icon ?? "trash",
+                message: undoAction?.message ?? "",
+                onUndo: {
+                    // Capture the action BEFORE creating the async Task
+                    let actionToUndo = undoAction
+                    Task {
+                        switch actionToUndo {
+                        case .deletion:
+                            await viewModel.undoDelete()
+                        case .completion:
+                            await viewModel.undoCompletion()
+                        case .none:
+                            break
+                        }
+                        HapticManager.shared.lightImpact()
+                    }
+                }
+            )
             .fullScreenCover(isPresented: $showAllDoneCelebration) {
                 AllDoneCelebrationView(
                     tasksCompletedCount: completedTasksCount,
@@ -335,7 +378,9 @@ struct TodayView: View {
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
                 Task {
-                    await viewModel.deleteTask(task)
+                    await viewModel.deleteTaskWithUndo(task)
+                    undoAction = .deletion
+                    HapticManager.shared.mediumImpact()
                 }
             } label: {
                 Label("Delete", systemImage: "trash")
@@ -428,7 +473,9 @@ struct TodayView: View {
 
             Button(role: .destructive) {
                 Task {
-                    await viewModel.deleteTask(task)
+                    await viewModel.deleteTaskWithUndo(task)
+                    undoAction = .deletion
+                    HapticManager.shared.mediumImpact()
                 }
             } label: {
                 Label("Delete", systemImage: "trash")
@@ -531,13 +578,14 @@ struct TodayView: View {
         let wasCompleted = task.isCompleted
         let remainingTasksBeforeToggle = todayTasks.count
 
-        await viewModel.toggleTaskCompletion(task)
+        await viewModel.toggleTaskCompletionWithUndo(task)
 
         await MainActor.run {
             if !wasCompleted {
                 // Task was just completed
                 HapticManager.shared.success()
                 showConfetti = true
+                undoAction = .completion
 
                 // Check if this was the last task
                 if remainingTasksBeforeToggle == 1 {
@@ -548,7 +596,9 @@ struct TodayView: View {
                     }
                 }
             } else {
+                // Task was uncompleted (user tapped again on completed task)
                 HapticManager.shared.mediumImpact()
+                // Don't show undo toast when uncompleting - it's already a reversal
             }
         }
     }
