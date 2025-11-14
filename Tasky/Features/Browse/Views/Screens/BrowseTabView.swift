@@ -41,12 +41,6 @@ struct BrowseTabView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
                         }
                         .padding(.vertical, 4)
                     }
@@ -182,12 +176,6 @@ struct BrowseTabView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
                         }
                         .padding(.vertical, 4)
                     }
