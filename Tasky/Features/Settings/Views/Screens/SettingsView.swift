@@ -12,11 +12,20 @@ struct SettingsView: View {
 
     // MARK: - Environment
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var notificationManager = NotificationManager.shared
 
     // MARK: - State
     @AppStorage("hapticsEnabled") private var hapticsEnabled = true
     @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system
+    @AppStorage("notificationsEnabled") private var notificationsEnabled = true
+    @AppStorage("taskDueReminders") private var taskDueReminders = true
+    @AppStorage("scheduledTimeReminders") private var scheduledTimeReminders = true
+    @AppStorage("advanceReminders") private var advanceReminders = true
+    @AppStorage("timerNotifications") private var timerNotifications = true
+
     @State private var showingExportSheet = false
+    @State private var showingPermissionAlert = false
+    @State private var pendingNotificationCount = 0
 
     // MARK: - Body
     var body: some View {
@@ -35,6 +44,44 @@ struct SettingsView: View {
                     Text("Appearance")
                 } footer: {
                     Text("Choose how Tasky looks on your device")
+                }
+
+                // Notifications Section
+                Section {
+                    notificationStatusRow
+
+                    if notificationManager.authorizationStatus == .authorized {
+                        Toggle(isOn: $taskDueReminders) {
+                            Label("Task Due Reminders", systemImage: "bell.badge")
+                        }
+
+                        Toggle(isOn: $scheduledTimeReminders) {
+                            Label("Scheduled Time Alerts", systemImage: "clock.badge")
+                        }
+
+                        Toggle(isOn: $advanceReminders) {
+                            Label("15-Min Advance Reminders", systemImage: "bell.badge.clock")
+                        }
+
+                        Toggle(isOn: $timerNotifications) {
+                            Label("Focus Timer Alerts", systemImage: "timer")
+                        }
+
+                        if pendingNotificationCount > 0 {
+                            HStack {
+                                Text("Pending Notifications")
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text("\(pendingNotificationCount)")
+                                    .foregroundStyle(.blue)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Notifications")
+                } footer: {
+                    notificationFooter
                 }
 
                 // Feedback Section
@@ -99,6 +146,83 @@ struct SettingsView: View {
             .sheet(isPresented: $showingExportSheet) {
                 ExportDataView()
             }
+            .alert("Notifications Disabled", isPresented: $showingPermissionAlert) {
+                Button("Open Settings", role: .none) {
+                    openAppSettings()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Enable notifications in Settings to receive reminders for your tasks and timers.")
+            }
+            .task {
+                await loadNotificationStatus()
+            }
+            .refreshable {
+                await loadNotificationStatus()
+            }
+        }
+    }
+
+    // MARK: - Notification Status Row
+    @ViewBuilder
+    private var notificationStatusRow: some View {
+        switch notificationManager.authorizationStatus {
+        case .notDetermined:
+            Button {
+                requestNotificationPermission()
+            } label: {
+                HStack {
+                    Label("Enable Notifications", systemImage: "bell.badge")
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+        case .authorized, .provisional, .ephemeral:
+            HStack {
+                Label("Notifications", systemImage: "bell.badge.fill")
+                    .foregroundStyle(.green)
+                Spacer()
+                Text("Enabled")
+                    .foregroundStyle(.secondary)
+            }
+
+        case .denied:
+            Button {
+                showingPermissionAlert = true
+            } label: {
+                HStack {
+                    Label("Notifications", systemImage: "bell.slash")
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    Text("Disabled")
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+        @unknown default:
+            EmptyView()
+        }
+    }
+
+    // MARK: - Notification Footer
+    @ViewBuilder
+    private var notificationFooter: some View {
+        switch notificationManager.authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            Text("Get notified about task deadlines and focus session completions")
+        case .denied:
+            Text("Notifications are disabled. Tap to enable them in Settings.")
+        case .notDetermined:
+            Text("Tap to enable notifications for task reminders and timer alerts")
+        @unknown default:
+            EmptyView()
         }
     }
 
@@ -107,6 +231,35 @@ struct SettingsView: View {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
         return "\(version) (\(build))"
+    }
+
+    // MARK: - Methods
+    private func requestNotificationPermission() {
+        Task {
+            do {
+                try await notificationManager.requestAuthorization()
+                await loadNotificationStatus()
+                HapticManager.shared.success()
+            } catch {
+                print("❌ Failed to request notification permission: \(error)")
+                HapticManager.shared.error()
+            }
+        }
+    }
+
+    private func loadNotificationStatus() async {
+        await notificationManager.checkAuthorizationStatus()
+        pendingNotificationCount = await notificationManager.getPendingNotificationCount()
+    }
+
+    private func openAppSettings() {
+        guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else {
+            return
+        }
+
+        if UIApplication.shared.canOpenURL(settingsURL) {
+            UIApplication.shared.open(settingsURL)
+        }
     }
 }
 
