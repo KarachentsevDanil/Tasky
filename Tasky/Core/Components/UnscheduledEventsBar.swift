@@ -17,6 +17,7 @@ struct UnscheduledEventsBar: View {
 
     // MARK: - State
     @State private var isExpanded = true
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     // MARK: - Body
     var body: some View {
@@ -31,7 +32,7 @@ struct UnscheduledEventsBar: View {
         }
         .padding()
         .background(Color(.secondarySystemBackground))
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isExpanded)
+        .animation(reduceMotion ? .none : .spring(response: 0.3, dampingFraction: 0.8), value: isExpanded)
     }
 
     // MARK: - Header
@@ -60,7 +61,7 @@ struct UnscheduledEventsBar: View {
             }) {
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .foregroundColor(.secondary)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
             }
             .accessibilityLabel(isExpanded ? "Collapse unscheduled tasks" : "Expand unscheduled tasks")
         }

@@ -17,6 +17,7 @@ struct AIChatView: View {
     @State private var scrollProxy: ScrollViewProxy?
     @FocusState private var isInputFocused: Bool
     @State private var showingPermissionAlert = false
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     // MARK: - Initialization
     init(dataService: DataService) {
@@ -115,6 +116,8 @@ struct AIChatView: View {
                     Image(systemName: voiceInputManager.isRecording ? "stop.circle.fill" : "mic.circle.fill")
                         .font(.system(size: 28))
                         .foregroundStyle(voiceInputManager.isRecording ? .red : .blue)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .disabled(!viewModel.isAvailable)
 
@@ -140,6 +143,8 @@ struct AIChatView: View {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 32))
                         .foregroundStyle(canSend ? .blue : .gray)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .disabled(!canSend)
             }
@@ -160,7 +165,7 @@ struct AIChatView: View {
                         .stroke(Color.red.opacity(0.3), lineWidth: 2)
                         .scaleEffect(voiceInputManager.isRecording ? 1.5 : 1.0)
                         .opacity(voiceInputManager.isRecording ? 0.0 : 1.0)
-                        .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: false), value: voiceInputManager.isRecording)
+                        .animation(reduceMotion ? .none : .easeInOut(duration: 1.0).repeatForever(autoreverses: false), value: voiceInputManager.isRecording)
                 )
 
             Text("Listening...")
@@ -252,7 +257,7 @@ struct AIChatView: View {
 
     private func scrollToBottom() {
         guard let lastMessage = viewModel.messages.last else { return }
-        withAnimation {
+        withAnimation(reduceMotion ? .none : .default) {
             scrollProxy?.scrollTo(lastMessage.id, anchor: .bottom)
         }
     }
@@ -295,6 +300,7 @@ struct MessageBubble: View {
 // MARK: - Typing Indicator
 struct TypingIndicator: View {
     @State private var animationPhase = 0
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     var body: some View {
         HStack {
@@ -322,7 +328,7 @@ struct TypingIndicator: View {
 
     private func startAnimation() {
         Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-            withAnimation {
+            withAnimation(reduceMotion ? .none : .default) {
                 animationPhase = (animationPhase + 1) % 3
             }
         }

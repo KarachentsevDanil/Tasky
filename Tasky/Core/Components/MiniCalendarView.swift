@@ -15,6 +15,7 @@ struct MiniCalendarView: View {
     let tasks: [TaskEntity]
     let onDateSelected: (Date) -> Void
     @State private var displayedMonth: Date = Date()
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     // MARK: - Computed Properties
     private var monthYearText: String {
@@ -66,14 +67,15 @@ struct MiniCalendarView: View {
             // Month navigation
             HStack {
                 Button {
-                    withAnimation(.spring(response: 0.3)) {
+                    withAnimation(reduceMotion ? .none : .spring(response: 0.3)) {
                         displayedMonth = Calendar.current.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
                     }
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
 
                 Spacer()
@@ -84,14 +86,15 @@ struct MiniCalendarView: View {
                 Spacer()
 
                 Button {
-                    withAnimation(.spring(response: 0.3)) {
+                    withAnimation(reduceMotion ? .none : .spring(response: 0.3)) {
                         displayedMonth = Calendar.current.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
                     }
                 } label: {
                     Image(systemName: "chevron.right")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
             }
             .padding(.horizontal, 8)
@@ -141,7 +144,7 @@ struct MiniCalendarView: View {
         let allCompleted = completedCount == totalCount && totalCount > 0
 
         return Button {
-            withAnimation(.spring(response: 0.3)) {
+            withAnimation(reduceMotion ? .none : .spring(response: 0.3)) {
                 selectedDate = date
                 onDateSelected(date)
             }

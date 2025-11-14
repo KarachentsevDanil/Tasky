@@ -25,6 +25,7 @@ struct CalendarEventView: View {
     @State private var isPressed = false
     @State private var showActions = false
     @State private var activeResizeEdge: ResizeEdge?
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     // MARK: - Types
     enum ResizeEdge {
@@ -36,7 +37,7 @@ struct CalendarEventView: View {
         static let cornerRadius: CGFloat = 8
         static let borderWidth: CGFloat = 2
         static let padding: CGFloat = 8
-        static let resizeHandleHeight: CGFloat = 12
+        static let resizeHandleHeight: CGFloat = 44  // Minimum tap target per HIG
         static let resizeHandleWidth: CGFloat = 40
     }
 
@@ -103,8 +104,8 @@ struct CalendarEventView: View {
         .frame(width: layout.frame.width, height: layout.frame.height)
         .scaleEffect(isPressed ? 0.98 : 1.0)
         .shadow(color: isSelected ? .black.opacity(0.15) : .clear, radius: 6)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPressed)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isSelected)
+        .animation(reduceMotion ? .none : .spring(response: Constants.Animation.Spring.response, dampingFraction: Constants.Animation.Spring.dampingFraction), value: isPressed)
+        .animation(reduceMotion ? .none : .spring(response: Constants.Animation.Spring.response, dampingFraction: Constants.Animation.Spring.dampingFraction), value: isSelected)
         .onTapGesture {
             HapticManager.shared.lightImpact()
             onTap()

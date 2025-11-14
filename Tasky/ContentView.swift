@@ -21,16 +21,16 @@ struct ContentView: View {
             TodayView(viewModel: viewModel)
                 .tabItem {
                     Image(systemName: "house.fill")
-                        .symbolRenderingMode(.multicolor)
+                        .symbolRenderingMode(Constants.IconRendering.multicolor)
                     Text("Today")
                 }
                 .tag(0)
 
             // Calendar Tab - Unified view with Day/Week/Month modes
-            UpcomingView(viewModel: viewModel)
+            CalendarMainView(viewModel: viewModel)
                 .tabItem {
                     Image(systemName: "calendar")
-                        .symbolRenderingMode(.multicolor)
+                        .symbolRenderingMode(Constants.IconRendering.multicolor)
                     Text("Calendar")
                 }
                 .tag(1)
@@ -39,7 +39,7 @@ struct ContentView: View {
             AIChatView(dataService: viewModel.dataService)
                 .tabItem {
                     Image(systemName: "sparkles")
-                        .symbolRenderingMode(.multicolor)
+                        .symbolRenderingMode(Constants.IconRendering.multicolor)
                     Text("AI Coach")
                 }
                 .tag(2)
@@ -48,7 +48,7 @@ struct ContentView: View {
             ProgressTabView(viewModel: viewModel)
                 .tabItem {
                     Image(systemName: "chart.bar.fill")
-                        .symbolRenderingMode(.multicolor)
+                        .symbolRenderingMode(Constants.IconRendering.multicolor)
                     Text("Progress")
                 }
                 .tag(3)

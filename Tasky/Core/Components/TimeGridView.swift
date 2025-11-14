@@ -40,7 +40,7 @@ struct TimeGridView: View {
         HStack(alignment: .top, spacing: Layout.spacing) {
             // Time Label
             Text(formatHour(hour))
-                .font(.system(size: 11))
+                .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(width: Layout.timeLabelWidth, alignment: .trailing)
                 .accessibilityLabel("Time slot \(formatHour(hour))")

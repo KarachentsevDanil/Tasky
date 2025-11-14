@@ -16,6 +16,7 @@ struct CompletionRingView: View {
     let lineWidth: CGFloat
 
     @State private var animatedProgress: Double = 0
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     // MARK: - Initialization
     init(completed: Int, total: Int, lineWidth: CGFloat = 12) {
@@ -67,22 +68,22 @@ struct CompletionRingView: View {
                     )
                 )
                 .rotationEffect(.degrees(-90))
-                .animation(.spring(response: 0.6, dampingFraction: 0.7), value: animatedProgress)
+                .animation(reduceMotion ? .none : .spring(response: 0.6, dampingFraction: 0.7), value: animatedProgress)
 
             // Center content - simplified
             Text("\(completed) / \(total)")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .font(.system(.title, design: .rounded).weight(.bold))
                 .foregroundStyle(ringColor)
         }
         .onAppear {
             // Animate progress on appear
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.2)) {
+            withAnimation(reduceMotion ? .none : .spring(response: 0.6, dampingFraction: 0.7).delay(0.2)) {
                 animatedProgress = progress
             }
         }
         .onChange(of: progress) { oldValue, newValue in
             // Animate progress changes
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+            withAnimation(reduceMotion ? .none : .spring(response: 0.6, dampingFraction: 0.7)) {
                 animatedProgress = newValue
             }
         }
@@ -98,6 +99,7 @@ struct CompactCompletionRingView: View {
     let size: CGFloat
 
     @State private var animatedProgress: Double = 0
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     // MARK: - Initialization
     init(completed: Int, total: Int, size: CGFloat = 40) {
@@ -151,12 +153,12 @@ struct CompactCompletionRingView: View {
         }
         .frame(width: size, height: size)
         .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.2)) {
+            withAnimation(reduceMotion ? .none : .spring(response: 0.6, dampingFraction: 0.7).delay(0.2)) {
                 animatedProgress = progress
             }
         }
         .onChange(of: progress) { oldValue, newValue in
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+            withAnimation(reduceMotion ? .none : .spring(response: 0.6, dampingFraction: 0.7)) {
                 animatedProgress = newValue
             }
         }

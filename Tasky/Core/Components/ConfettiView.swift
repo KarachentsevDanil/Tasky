@@ -13,6 +13,7 @@ struct ConfettiView: View {
     // MARK: - State
     @State private var animate = false
     @State private var particles: [ConfettiParticle] = []
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     // MARK: - Properties
     let particleCount: Int
@@ -54,9 +55,13 @@ struct ConfettiView: View {
                     )
                 }
 
-                // Animate
-                withAnimation(.easeOut(duration: 1.5)) {
+                // Animate (skip if reduce motion is enabled)
+                if reduceMotion {
                     animate = true
+                } else {
+                    withAnimation(.easeOut(duration: Constants.Animation.celebration)) {
+                        animate = true
+                    }
                 }
             }
         }
@@ -100,7 +105,7 @@ struct ConfettiModifier: ViewModifier {
                     ConfettiView()
                         .onAppear {
                             // Auto-dismiss after animation
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + Constants.Animation.celebration) {
                                 isPresented = false
                                 onDismiss()
                             }

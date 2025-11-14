@@ -149,6 +149,8 @@ class DataService {
     func fetchAllTasks() throws -> [TaskEntity] {
         let fetchRequest: NSFetchRequest<TaskEntity> = TaskEntity.fetchRequest()
         fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \TaskEntity.createdAt, ascending: false)]
+        fetchRequest.fetchLimit = 1000  // Reasonable limit for task management app
+        fetchRequest.fetchBatchSize = 50  // Load 50 tasks at a time for better memory usage
         return try viewContext.fetch(fetchRequest)
     }
 
@@ -174,6 +176,7 @@ class DataService {
             NSSortDescriptor(keyPath: \TaskEntity.scheduledTime, ascending: true),
             NSSortDescriptor(keyPath: \TaskEntity.dueDate, ascending: true)
         ]
+        fetchRequest.fetchBatchSize = 20  // Most users won't have more than 20 tasks per day
 
         return try viewContext.fetch(fetchRequest)
     }
@@ -192,6 +195,7 @@ class DataService {
             nextWeek as NSDate
         )
         fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \TaskEntity.dueDate, ascending: true)]
+        fetchRequest.fetchBatchSize = 30  // 7 days of tasks
 
         return try viewContext.fetch(fetchRequest)
     }
@@ -201,6 +205,7 @@ class DataService {
         let fetchRequest: NSFetchRequest<TaskEntity> = TaskEntity.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "taskList == nil AND isCompleted == NO")
         fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \TaskEntity.createdAt, ascending: false)]
+        fetchRequest.fetchBatchSize = 30
 
         return try viewContext.fetch(fetchRequest)
     }
@@ -210,6 +215,8 @@ class DataService {
         let fetchRequest: NSFetchRequest<TaskEntity> = TaskEntity.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "isCompleted == YES")
         fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \TaskEntity.completedAt, ascending: false)]
+        fetchRequest.fetchLimit = 500  // Limit completed tasks shown
+        fetchRequest.fetchBatchSize = 50  // Load in batches
 
         return try viewContext.fetch(fetchRequest)
     }
@@ -219,6 +226,7 @@ class DataService {
         let fetchRequest: NSFetchRequest<TaskEntity> = TaskEntity.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "taskList == %@", list)
         fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \TaskEntity.createdAt, ascending: false)]
+        fetchRequest.fetchBatchSize = 30
 
         return try viewContext.fetch(fetchRequest)
     }

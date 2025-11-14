@@ -14,10 +14,21 @@ class ProgressViewModel: ObservableObject {
 
     // MARK: - Published Properties
     @Published var selectedPeriod: ProgressTimePeriod = .week
-    @Published var statistics: ProgressStatistics?
-    @Published var isLoading = false
-    @Published var error: Error?
+    @Published var statisticsState: LoadingState<ProgressStatistics> = .idle
     @Published var newlyUnlockedAchievements: [AchievementData] = []
+
+    // MARK: - Computed Properties (for backward compatibility)
+    var statistics: ProgressStatistics? {
+        statisticsState.data
+    }
+
+    var isLoading: Bool {
+        statisticsState.isLoading
+    }
+
+    var error: Error? {
+        statisticsState.error
+    }
 
     // MARK: - Dependencies
     private let dataService: DataService
@@ -43,8 +54,7 @@ class ProgressViewModel: ObservableObject {
 
     // MARK: - Data Loading
     func loadStatistics() async {
-        isLoading = true
-        defer { isLoading = false }
+        statisticsState = .loading
 
         do {
             let allTasks = try dataService.fetchAllTasks()
@@ -53,10 +63,15 @@ class ProgressViewModel: ObservableObject {
             // Detect newly unlocked achievements
             detectNewlyUnlockedAchievements(newStats.achievements)
 
-            statistics = newStats
+            statisticsState = .loaded(newStats)
         } catch {
-            self.error = error
+            statisticsState = .error(error)
         }
+    }
+
+    /// Retry loading statistics after an error
+    func retryLoadStatistics() async {
+        await loadStatistics()
     }
 
     // MARK: - Achievement Unlock Detection
