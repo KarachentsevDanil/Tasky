@@ -11,7 +11,6 @@ import SwiftUI
 struct SettingsView: View {
 
     // MARK: - Environment
-    @Environment(\.dismiss) private var dismiss
     @StateObject private var notificationManager = NotificationManager.shared
 
     // MARK: - State
@@ -29,8 +28,7 @@ struct SettingsView: View {
 
     // MARK: - Body
     var body: some View {
-        NavigationStack {
-            Form {
+        Form {
                 // Appearance Section
                 Section {
                     Picker("Theme", selection: $appearanceMode) {
@@ -136,13 +134,6 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
             .sheet(isPresented: $showingExportSheet) {
                 ExportDataView()
             }
@@ -160,7 +151,6 @@ struct SettingsView: View {
             .refreshable {
                 await loadNotificationStatus()
             }
-        }
     }
 
     // MARK: - Notification Status Row

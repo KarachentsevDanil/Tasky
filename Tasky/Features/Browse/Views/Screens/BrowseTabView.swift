@@ -15,7 +15,6 @@ struct BrowseTabView: View {
     @ObservedObject var viewModel: TaskListViewModel
 
     // MARK: - State
-    @State private var showingSettings = false
     @State private var showingAddList = false
 
     // MARK: - Body
@@ -166,8 +165,8 @@ struct BrowseTabView: View {
 
                 // Settings Row
                 Section {
-                    Button {
-                        showingSettings = true
+                    NavigationLink {
+                        SettingsView()
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "gearshape.fill")
@@ -175,9 +174,14 @@ struct BrowseTabView: View {
                                 .foregroundStyle(.gray)
                                 .frame(width: 32)
 
-                            Text("Settings")
-                                .font(.body)
-                                .foregroundStyle(.primary)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Settings")
+                                    .font(.body.weight(.semibold))
+
+                                Text("Preferences and app settings")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
 
                             Spacer()
 
@@ -193,9 +197,6 @@ struct BrowseTabView: View {
             .navigationBarTitleDisplayMode(.large)
             .refreshable {
                 await viewModel.loadTaskLists()
-            }
-            .sheet(isPresented: $showingSettings) {
-                SettingsView()
             }
             .sheet(isPresented: $showingAddList) {
                 AddListView(viewModel: viewModel)
