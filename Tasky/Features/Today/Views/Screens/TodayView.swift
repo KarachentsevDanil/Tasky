@@ -115,19 +115,20 @@ struct TodayView: View {
         var grouped: [TaskGroup: [TaskEntity]] = [:]
 
         for task in todayTasks {
-            let scheduledTime = task.scheduledTime ?? task.dueDate
-
-            if let time = scheduledTime {
-                if time < now {
+            // Only use scheduledTime for time-based grouping
+            // Tasks with dueDate but no scheduledTime go to "Anytime"
+            if let scheduledTime = task.scheduledTime {
+                if scheduledTime < now {
                     grouped[.overdue, default: []].append(task)
-                } else if time <= twoHoursFromNow {
+                } else if scheduledTime <= twoHoursFromNow {
                     grouped[.now, default: []].append(task)
-                } else if time <= endOfToday {
+                } else if scheduledTime <= endOfToday {
                     grouped[.laterToday, default: []].append(task)
                 } else {
                     grouped[.noTime, default: []].append(task)
                 }
             } else {
+                // No scheduled time = goes to Anytime section
                 grouped[.noTime, default: []].append(task)
             }
         }
@@ -548,7 +549,15 @@ struct TodayView: View {
 
             // Use parsed metadata, fallback to defaults
             let finalTitle = parsed.cleanTitle.isEmpty ? trimmedTitle : parsed.cleanTitle
-            let finalDueDate = parsed.dueDate ?? Calendar.current.startOfDay(for: Date())
+            // If no specific date was parsed, set dueDate to today at end of day
+            // This ensures the task appears in Today view but doesn't show as overdue
+            let finalDueDate: Date
+            if let parsedDate = parsed.dueDate {
+                finalDueDate = parsedDate
+            } else {
+                let calendar = Calendar.current
+                finalDueDate = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date()
+            }
             let finalPriority = parsed.priority
 
             // Find matching list if listHint was provided
