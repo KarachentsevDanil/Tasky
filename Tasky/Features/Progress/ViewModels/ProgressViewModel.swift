@@ -58,7 +58,8 @@ class ProgressViewModel: ObservableObject {
 
         do {
             let allTasks = try dataService.fetchAllTasks()
-            let newStats = calculateStatistics(from: allTasks, period: selectedPeriod)
+            let allLists = try dataService.fetchAllTaskLists()
+            let newStats = calculateStatistics(from: allTasks, lists: allLists, period: selectedPeriod)
 
             // Detect newly unlocked achievements
             detectNewlyUnlockedAchievements(newStats.achievements)
@@ -96,7 +97,7 @@ class ProgressViewModel: ObservableObject {
     }
 
     // MARK: - Statistics Calculation
-    private func calculateStatistics(from tasks: [TaskEntity], period: ProgressTimePeriod) -> ProgressStatistics {
+    private func calculateStatistics(from tasks: [TaskEntity], lists: [TaskListEntity], period: ProgressTimePeriod) -> ProgressStatistics {
         let calendar = Calendar.current
         let now = Date()
         let periodStart = calendar.date(byAdding: .day, value: -period.days, to: now) ?? now
@@ -155,8 +156,19 @@ class ProgressViewModel: ObservableObject {
         // Calculate personal best
         let personalBest = statsCalculator.calculatePersonalBest(from: tasks)
 
+        // Extract all focus sessions from tasks
+        let allFocusSessions: [FocusSessionEntity] = tasks.flatMap { task -> [FocusSessionEntity] in
+            guard let sessions = task.focusSessions as? Set<FocusSessionEntity> else { return [] }
+            return Array(sessions)
+        }
+
         // Achievements
-        let achievements = achievementsManager.calculateAchievements(from: tasks, streak: streak.current)
+        let achievements = achievementsManager.calculateAchievements(
+            from: tasks,
+            focusSessions: allFocusSessions,
+            lists: lists,
+            streak: streak.current
+        )
 
         return ProgressStatistics(
             // Streak
