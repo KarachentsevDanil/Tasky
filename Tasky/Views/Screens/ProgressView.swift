@@ -7,276 +7,314 @@
 
 import SwiftUI
 
-/// Progress and stats view with streaks and achievements
+/// Enhanced progress and stats view with comprehensive analytics
 struct ProgressTabView: View {
 
     // MARK: - Properties
-    @StateObject var viewModel: TaskListViewModel
+    @ObservedObject var viewModel: TaskListViewModel
+    @StateObject private var progressViewModel: ProgressViewModel
+    @State private var animateStats = false
+    @State private var showConfetti = false
+    @State private var selectedAchievement: AchievementData?
+    @State private var showAllAchievements = false
 
-    // MARK: - Computed Properties
-    private var completedThisWeek: Int {
-        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        return viewModel.tasks.filter {
-            $0.isCompleted && ($0.completedAt ?? Date()) >= weekAgo
-        }.count
-    }
-
-    private var totalCompleted: Int {
-        viewModel.tasks.filter { $0.isCompleted }.count
-    }
-
-    private var averagePerDay: Double {
-        guard totalCompleted > 0 else { return 0 }
-        // Simplified calculation
-        return Double(totalCompleted) / 7.0
+    // MARK: - Initialization
+    init(viewModel: TaskListViewModel) {
+        self.viewModel = viewModel
+        self._progressViewModel = StateObject(wrappedValue: ProgressViewModel(dataService: viewModel.dataService))
     }
 
     // MARK: - Body
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
-                    // Streak Card
-                    streakCard
+                VStack(spacing: 20) {
+                    // Period selector
+                    periodSelector
+                        .padding(.horizontal)
 
-                    // Weekly Stats
-                    weeklyStatsCard
+                    if let stats = progressViewModel.statistics {
+                        // Hero Streak Card
+                        EnhancedStreakCard(
+                            currentStreak: stats.currentStreak,
+                            recordStreak: stats.recordStreak,
+                            message: stats.streakMessage
+                        )
+                        .padding(.horizontal)
 
-                    // Achievements Section
-                    achievementsSection
+                        // Key Stats Grid
+                        statsGrid(stats: stats)
+                            .padding(.horizontal)
+
+                        // Weekly Activity Chart
+                        WeeklyActivityChart(data: stats.weeklyActivity)
+                            .padding(.horizontal)
+
+                        // Activity Heatmap
+                        ActivityHeatmap(data: stats.heatmapData)
+                            .padding(.horizontal)
+
+                        // Productivity Score
+                        ProductivityScoreView(score: stats.productivityScore)
+                            .padding(.horizontal)
+
+                        // Insights
+                        InsightsCard(insights: stats.insights)
+                            .padding(.horizontal)
+
+                        // Personal Best
+                        PersonalBestCard(personalBest: stats.personalBest)
+                            .padding(.horizontal)
+
+                        // Achievements
+                        achievementsSection(achievements: stats.achievements)
+                            .padding(.horizontal)
+                    } else {
+                        // Loading state
+                        ProgressView()
+                            .frame(maxWidth: .infinity, maxHeight: 300)
+                    }
                 }
-                .padding()
+                .padding(.vertical)
             }
             .navigationTitle("Progress")
+            .navigationBarTitleDisplayMode(.large)
             .task {
-                await viewModel.loadTasks()
+                await progressViewModel.loadStatistics()
+            }
+            .refreshable {
+                await progressViewModel.loadStatistics()
+            }
+            .confetti(isPresented: $showConfetti)
+            .sheet(item: $selectedAchievement) { achievement in
+                AchievementDetailModal(achievement: achievement)
+            }
+            .sheet(isPresented: $showAllAchievements) {
+                if let stats = progressViewModel.statistics {
+                    AllAchievementsView(achievements: stats.achievements)
+                }
+            }
+            .onChange(of: progressViewModel.newlyUnlockedAchievements) { oldValue, newValue in
+                if !newValue.isEmpty {
+                    // Show confetti for achievement unlock
+                    showConfetti = true
+
+                    // Clear after animation
+                    Task {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                        progressViewModel.clearNewlyUnlockedAchievements()
+                        showConfetti = false
+                    }
+                }
             }
         }
     }
 
-    // MARK: - Streak Card
-    private var streakCard: some View {
-        VStack(spacing: 16) {
-            // Flame Icon
-            Image(systemName: "flame.fill")
-                .font(.system(size: 60))
-                .foregroundStyle(.orange.gradient)
+    // MARK: - Period Selector
+    private var periodSelector: some View {
+        HStack {
+            Spacer()
 
-            // Streak Count
-            VStack(spacing: 4) {
-                Text("\(currentStreak)")
-                    .font(.system(size: 48, weight: .bold, design: .rounded))
-                    .foregroundStyle(.orange)
-
-                Text("Day Streak")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
+            Picker("Period", selection: $progressViewModel.selectedPeriod) {
+                ForEach(ProgressViewModel.TimePeriod.allCases, id: \.self) { period in
+                    Text(period.rawValue).tag(period)
+                }
             }
-
-            // Motivational Message
-            Text(streakMessage)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            .pickerStyle(.segmented)
+            .frame(width: 250)
+            .onChange(of: progressViewModel.selectedPeriod) { oldValue, newValue in
+                Task {
+                    await progressViewModel.loadStatistics()
+                }
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 32)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.05), radius: 10, y: 2)
-        )
     }
 
-    // MARK: - Weekly Stats Card
-    private var weeklyStatsCard: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("This Week")
-                .font(.title2.weight(.bold))
+    // MARK: - Stats Grid
+    private func statsGrid(stats: ProgressStatistics) -> some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+            EnhancedStatCard(
+                icon: "✅",
+                value: "\(stats.tasksCompleted)",
+                label: "Completed",
+                trend: stats.tasksCompletedChange,
+                color: .green
+            )
 
-            // Stats Grid
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
-                StatCard(
-                    icon: "checkmark.circle.fill",
-                    value: "\(completedThisWeek)",
-                    label: "Completed",
-                    color: .green
-                )
+            EnhancedStatCard(
+                icon: "⏱️",
+                value: String(format: "%.1fh", stats.focusHours),
+                label: "Time Focused",
+                trend: Int(stats.focusHoursChange),
+                color: .blue
+            )
 
-                StatCard(
-                    icon: "chart.line.uptrend.xyaxis",
-                    value: String(format: "%.1f", averagePerDay),
-                    label: "Avg/Day",
-                    color: .blue
-                )
+            EnhancedStatCard(
+                icon: "🎯",
+                value: String(format: "%.0f%%", stats.completionRate),
+                label: "Completion Rate",
+                trend: Int(stats.completionRateChange),
+                color: .orange
+            )
 
-                StatCard(
-                    icon: "star.fill",
-                    value: "\(totalCompleted)",
-                    label: "Total",
-                    color: .yellow
-                )
-
-                StatCard(
-                    icon: "calendar",
-                    value: "\(viewModel.taskLists.count)",
-                    label: "Lists",
-                    color: .purple
-                )
-            }
+            EnhancedStatCard(
+                icon: "⚡",
+                value: String(format: "%.1f", stats.avgPerDay),
+                label: "Avg per Day",
+                trend: Int(stats.avgPerDayChange),
+                color: .purple
+            )
         }
     }
 
     // MARK: - Achievements Section
-    private var achievementsSection: some View {
+    private func achievementsSection(achievements: [AchievementData]) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Achievements")
-                .font(.title2.weight(.bold))
+            // Header
+            HStack {
+                Text("Achievements")
+                    .font(.system(size: 20, weight: .bold))
 
-            ForEach(achievements, id: \.title) { achievement in
-                AchievementRow(achievement: achievement, isUnlocked: achievement.isUnlocked(totalCompleted))
+                Spacer()
+
+                Button("View All") {
+                    showAllAchievements = true
+                }
+                .font(.system(size: 14))
+                .foregroundStyle(.blue)
+            }
+
+            // Achievement Grid
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 16) {
+                ForEach(achievements) { achievement in
+                    AchievementCard(achievement: achievement)
+                        .onTapGesture {
+                            selectedAchievement = achievement
+                        }
+                }
             }
         }
     }
-
-    // MARK: - Computed Values
-    private var currentStreak: Int {
-        // Simplified: return total completed tasks / 10 as streak days
-        max(1, totalCompleted / 5)
-    }
-
-    private var streakMessage: String {
-        switch currentStreak {
-        case 1:
-            return "Start your journey today!"
-        case 2...7:
-            return "Building momentum!"
-        case 8...14:
-            return "You're on a roll!"
-        case 15...30:
-            return "Incredible consistency!"
-        default:
-            return "You're unstoppable!"
-        }
-    }
-
-    private let achievements: [Achievement] = [
-        Achievement(
-            title: "Getting Started",
-            description: "Complete your first task",
-            icon: "star.fill",
-            color: .yellow,
-            threshold: 1
-        ),
-        Achievement(
-            title: "Productive Week",
-            description: "Complete 10 tasks",
-            icon: "flame.fill",
-            color: .orange,
-            threshold: 10
-        ),
-        Achievement(
-            title: "Task Master",
-            description: "Complete 50 tasks",
-            icon: "crown.fill",
-            color: .purple,
-            threshold: 50
-        ),
-        Achievement(
-            title: "Legend",
-            description: "Complete 100 tasks",
-            icon: "trophy.fill",
-            color: .yellow,
-            threshold: 100
-        )
-    ]
 }
 
-// MARK: - Stat Card
-struct StatCard: View {
+// MARK: - Enhanced Stat Card with Trend
+struct EnhancedStatCard: View {
     let icon: String
     let value: String
     let label: String
+    let trend: Int
     let color: Color
+
+    @State private var animateValue = false
 
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.title)
-                .foregroundStyle(color.gradient)
+            // Icon
+            Text(icon)
+                .font(.system(size: 28))
 
+            // Value
             Text(value)
-                .font(.title.weight(.bold))
+                .font(.system(size: 28, weight: .bold))
+                .opacity(animateValue ? 1 : 0)
+                .scaleEffect(animateValue ? 1 : 0.5)
+                .animation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.1), value: animateValue)
 
+            // Label
             Text(label)
-                .font(.caption)
+                .font(.system(size: 13))
                 .foregroundStyle(.secondary)
+
+            // Trend Indicator
+            trendIndicator
         }
         .frame(maxWidth: .infinity)
-        .padding()
+        .padding(.vertical, 20)
+        .padding(.horizontal, 12)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.secondarySystemBackground))
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
         )
+        .onAppear {
+            animateValue = true
+        }
     }
-}
 
-// MARK: - Achievement Model
-struct Achievement {
-    let title: String
-    let description: String
-    let icon: String
-    let color: Color
-    let threshold: Int
-
-    func isUnlocked(_ count: Int) -> Bool {
-        count >= threshold
-    }
-}
-
-// MARK: - Achievement Row
-struct AchievementRow: View {
-    let achievement: Achievement
-    let isUnlocked: Bool
-
-    var body: some View {
-        HStack(spacing: 16) {
-            // Icon
-            Image(systemName: achievement.icon)
-                .font(.title2)
-                .foregroundStyle(isUnlocked ? achievement.color.gradient : Color.gray.gradient)
-                .frame(width: 44, height: 44)
-                .background(
-                    Circle()
-                        .fill(isUnlocked ? achievement.color.opacity(0.1) : Color.gray.opacity(0.1))
-                )
-
-            // Details
-            VStack(alignment: .leading, spacing: 4) {
-                Text(achievement.title)
-                    .font(.headline)
-                    .foregroundStyle(isUnlocked ? .primary : .secondary)
-
-                Text(achievement.description)
-                    .font(.caption)
+    private var trendIndicator: some View {
+        Group {
+            if trend > 0 {
+                Label("+\(trend)", systemImage: "arrow.up")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.green)
+            } else if trend < 0 {
+                Label("\(trend)", systemImage: "arrow.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.red)
+            } else {
+                Text("No change")
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+}
 
-            Spacer()
+// MARK: - Achievement Card
+struct AchievementCard: View {
+    let achievement: AchievementData
 
-            // Lock/Unlock Indicator
-            if isUnlocked {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            } else {
-                Image(systemName: "lock.fill")
-                    .foregroundStyle(.gray)
+    var body: some View {
+        VStack(spacing: 12) {
+            // Icon with background
+            ZStack {
+                Circle()
+                    .fill(achievement.unlocked ? Color.yellow.opacity(0.2) : Color(.systemGray5))
+                    .frame(width: 60, height: 60)
+
+                Text(achievement.icon)
+                    .font(.system(size: 30))
+                    .grayscale(achievement.unlocked ? 0 : 1)
+                    .opacity(achievement.unlocked ? 1 : 0.5)
+
+                if !achievement.unlocked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white)
+                        .padding(4)
+                        .background(Circle().fill(Color.gray))
+                        .offset(x: 20, y: -20)
+                }
+            }
+
+            // Name
+            Text(achievement.name)
+                .font(.system(size: 12, weight: .bold))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .foregroundStyle(achievement.unlocked ? .primary : .secondary)
+
+            // Progress
+            if !achievement.unlocked {
+                Text("\(achievement.progress)/\(achievement.required)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding()
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 8)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.secondarySystemBackground))
+            RoundedRectangle(cornerRadius: 16)
+                .fill(achievement.unlocked ? Color.yellow.opacity(0.15) : Color(.systemBackground))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .strokeBorder(
+                            achievement.unlocked ? Color.yellow : Color.clear,
+                            lineWidth: 2
+                        )
+                )
+                .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
         )
     }
 }
