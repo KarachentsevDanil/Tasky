@@ -20,22 +20,11 @@ struct TodayView: View {
     @State private var showAllDoneCelebration = false
     @State private var completedTasksCount = 0
     @State private var quickTaskTitle = ""
-    @State private var sheetPresentation: SheetType?
+    @State private var showAddTask = false
+    @State private var selectedTaskForDetail: TaskEntity?
     @State private var showCompletedTasks = false
     @State private var undoAction: UndoAction?
     @FocusState private var isQuickAddFocused: Bool
-
-    enum SheetType: Identifiable {
-        case addTask
-        case taskDetail(TaskEntity)
-
-        var id: String {
-            switch self {
-            case .addTask: return "addTask"
-            case .taskDetail(let task): return "taskDetail-\(task.id)"
-            }
-        }
-    }
 
     enum UndoAction {
         case deletion
@@ -162,7 +151,7 @@ struct TodayView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 10) {
+                VStack(spacing: Constants.Spacing.sm) {
                     // Header
                     headerView
 
@@ -174,7 +163,7 @@ struct TodayView: View {
 
                     // Completed Section
                     if !completedTasks.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: Constants.Spacing.xs) {
                             // Always show the toggle button
                             showCompletedButton
 
@@ -185,22 +174,20 @@ struct TodayView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.horizontal, Constants.Spacing.lg)
+                .padding(.vertical, Constants.Spacing.sm)
             }
             .background(Color(.systemGroupedBackground))
             .refreshable {
                 await viewModel.loadTasks()
             }
             .navigationBarHidden(true)
-            .sheet(item: $sheetPresentation) { sheet in
-                switch sheet {
-                case .addTask:
-                    AddTaskView(viewModel: viewModel)
-                case .taskDetail(let task):
-                    NavigationStack {
-                        TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
-                    }
+            .navigationDestination(isPresented: $showAddTask) {
+                AddTaskView(viewModel: viewModel)
+            }
+            .sheet(item: $selectedTaskForDetail) { task in
+                NavigationStack {
+                    TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
                 }
             }
             .confetti(isPresented: $showConfetti)
@@ -294,7 +281,7 @@ struct TodayView: View {
             taskTitle: $quickTaskTitle,
             isFocused: $isQuickAddFocused,
             onAdd: addQuickTask,
-            onShowAdvanced: { sheetPresentation = .addTask },
+            onShowAdvanced: { showAddTask = true },
             onShowAIChat: {
                 // Navigate to AI chat tab
                 // Since we can't directly change tabs from here, we'll show a hint
@@ -305,30 +292,30 @@ struct TodayView: View {
 
     // MARK: - Tasks Section
     private var tasksSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Constants.Spacing.sm) {
             if todayTasks.isEmpty {
                 emptyStateView
             } else {
                 ForEach(groupedTasks, id: \.group) { groupData in
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: Constants.Spacing.xs) {
                         // Section Header
-                        HStack(spacing: 6) {
+                        HStack(spacing: Constants.Spacing.xs) {
                             Image(systemName: groupData.group.icon)
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(groupData.group.color)
 
                             Text(groupData.group.title)
-                                .font(.subheadline.weight(.semibold))
+                                .font(.caption.weight(.semibold))
                                 .foregroundStyle(groupData.group.color)
 
                             Text("(\(groupData.tasks.count))")
-                                .font(.caption)
+                                .font(.caption2)
                                 .foregroundStyle(.secondary)
 
                             Spacer()
                         }
-                        .padding(.horizontal, 4)
-                        .padding(.top, groupData.group == .overdue ? 0 : 8)
+                        .padding(.horizontal, Constants.Spacing.xs)
+                        .padding(.top, groupData.group == .overdue ? 0 : Constants.Spacing.xs)
 
                         // Tasks in this group
                         ForEach(groupData.tasks) { task in
@@ -364,7 +351,7 @@ struct TodayView: View {
             : nil
         )
         .onTapGesture {
-            sheetPresentation = .taskDetail(task)
+            selectedTaskForDetail = task
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
@@ -389,7 +376,7 @@ struct TodayView: View {
         }
         .contextMenu {
             Button {
-                sheetPresentation = .taskDetail(task)
+                selectedTaskForDetail = task
             } label: {
                 Label("View Details", systemImage: "info.circle")
             }
@@ -486,17 +473,17 @@ struct TodayView: View {
 
     // MARK: - Completed Section
     private var completedSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Constants.Spacing.xs) {
             ForEach(completedTasks) { task in
                 ModernTaskCardView(task: task) {
                     Task {
                         await toggleTaskCompletion(task)
                     }
                 }
-                .opacity(0.4)
+                .opacity(0.6)
                 .scaleEffect(0.98)
                 .onTapGesture {
-                    sheetPresentation = .taskDetail(task)
+                    selectedTaskForDetail = task
                 }
             }
         }
@@ -527,11 +514,11 @@ struct TodayView: View {
                     .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(showCompletedTasks ? 180 : 0))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Constants.Spacing.md)
+            .padding(.vertical, Constants.Spacing.sm)
             .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: Constants.UI.cornerRadius))
-            .shadow(color: .black.opacity(0.04), radius: 4, y: 1)
+            .clipShape(RoundedRectangle(cornerRadius: Constants.Layout.cornerRadiusSmall))
+            .shadow(color: .black.opacity(0.02), radius: 2, y: 0.5)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(completedTasks.count) completed tasks")
@@ -549,14 +536,14 @@ struct TodayView: View {
 
             // Use parsed metadata, fallback to defaults
             let finalTitle = parsed.cleanTitle.isEmpty ? trimmedTitle : parsed.cleanTitle
-            // If no specific date was parsed, set dueDate to today at end of day
-            // This ensures the task appears in Today view but doesn't show as overdue
+            // If no specific date was parsed, set dueDate to today at midnight (start of day)
+            // This represents "just a date" with no specific time
             let finalDueDate: Date
             if let parsedDate = parsed.dueDate {
                 finalDueDate = parsedDate
             } else {
                 let calendar = Calendar.current
-                finalDueDate = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date()
+                finalDueDate = calendar.startOfDay(for: Date())
             }
             let finalPriority = parsed.priority
 

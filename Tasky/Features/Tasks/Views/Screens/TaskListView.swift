@@ -40,7 +40,7 @@ struct TaskListView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingAddTask) {
+            .navigationDestination(isPresented: $showingAddTask) {
                 AddTaskView(viewModel: viewModel)
             }
             .alert("Error", isPresented: $viewModel.showError) {

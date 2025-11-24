@@ -77,7 +77,7 @@ struct CalendarMainView: View {
                     .accessibilityHint("Create a new task")
                 }
             }
-            .sheet(isPresented: $showingAddTask) {
+            .navigationDestination(isPresented: $showingAddTask) {
                 AddTaskView(viewModel: viewModel)
             }
             .alert("Error", isPresented: $viewModel.showError) {

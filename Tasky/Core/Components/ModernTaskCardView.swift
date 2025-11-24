@@ -23,13 +23,13 @@ struct ModernTaskCardView: View {
                     .padding(.vertical, 4)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: Constants.Spacing.sm) {
                 // Checkbox
                 Button(action: onToggleCompletion) {
                     Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                        .font(.body)
+                        .font(.title3)
                         .foregroundStyle(task.isCompleted ? .green : Color(.systemGray3))
-                        .frame(minWidth: 44, minHeight: 44)
+                        .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -38,9 +38,9 @@ struct ModernTaskCardView: View {
                 .accessibilityValue(task.title)
 
                 // Task content
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(task.title)
-                        .font(task.isCompleted ? .footnote : .subheadline.weight(.medium))
+                        .font(task.isCompleted ? .footnote : .subheadline)
                         .foregroundStyle(task.isCompleted ? .secondary : .primary)
                         .strikethrough(task.isCompleted)
 
@@ -115,13 +115,13 @@ struct ModernTaskCardView: View {
                         .frame(width: 5, height: 5)
                 }
             }
-            .padding(.leading, task.priority > 0 ? 8 : 10)
-            .padding(.trailing, 10)
-            .padding(.vertical, task.isCompleted ? 4 : 8)
+            .padding(.leading, task.priority > 0 ? Constants.Spacing.sm : Constants.Spacing.md)
+            .padding(.trailing, Constants.Spacing.md)
+            .padding(.vertical, task.isCompleted ? Constants.Spacing.xs : Constants.Spacing.sm)
         }
         .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: Constants.UI.cornerRadius))
-        .shadow(color: .black.opacity(0.04), radius: 4, y: 1)
+        .clipShape(RoundedRectangle(cornerRadius: Constants.Layout.cornerRadiusSmall))
+        .shadow(color: .black.opacity(0.02), radius: 2, y: 0.5)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityTaskLabel)
         .accessibilityHint("Double tap to view task details")

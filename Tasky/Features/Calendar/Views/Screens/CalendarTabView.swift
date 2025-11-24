@@ -76,7 +76,7 @@ struct CalendarTabView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingAddTask) {
+            .navigationDestination(isPresented: $showingAddTask) {
                 AddTaskView(viewModel: viewModel)
             }
             .task {
