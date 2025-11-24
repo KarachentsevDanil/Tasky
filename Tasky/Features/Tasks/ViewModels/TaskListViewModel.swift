@@ -401,7 +401,25 @@ class TaskListViewModel: ObservableObject {
         }
     }
 
+    // MARK: - AI Prioritization
+
+    /// Update AI priority scores for all tasks
+    func updateAIPriorityScores() async {
+        do {
+            try dataService.updateAIPriorityScores()
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
     // MARK: - Computed Properties
+
+    /// Get the top priority task (highest AI score, not completed)
+    var topPriorityTask: TaskEntity? {
+        tasks.filter { !$0.isCompleted }
+            .max(by: { $0.aiPriorityScore < $1.aiPriorityScore })
+    }
 
     var todayTasksCount: Int {
         (try? dataService.fetchTodayTasks().count) ?? 0

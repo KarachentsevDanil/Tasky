@@ -19,12 +19,11 @@ struct TodayView: View {
     @State private var showConfetti = false
     @State private var showAllDoneCelebration = false
     @State private var completedTasksCount = 0
-    @State private var quickTaskTitle = ""
+    @State private var showQuickAdd = false
     @State private var showAddTask = false
     @State private var selectedTaskForDetail: TaskEntity?
     @State private var showCompletedTasks = false
     @State private var undoAction: UndoAction?
-    @FocusState private var isQuickAddFocused: Bool
 
     enum UndoAction {
         case deletion
@@ -82,17 +81,13 @@ struct TodayView: View {
 
     // MARK: - Computed Properties
     private var todayTasks: [TaskEntity] {
+        // Flat list sorted by AI priority score (highest first)
         viewModel.tasks.filter { !$0.isCompleted }
-            .sorted { task1, task2 in
-                let date1 = task1.scheduledTime ?? task1.dueDate ?? Date.distantFuture
-                let date2 = task2.scheduledTime ?? task2.dueDate ?? Date.distantFuture
+            .sorted { $0.aiPriorityScore > $1.aiPriorityScore }
+    }
 
-                if date1 != date2 {
-                    return date1 < date2
-                }
-
-                return task1.priority > task2.priority
-            }
+    private var topPriorityTask: TaskEntity? {
+        todayTasks.first
     }
 
     private var groupedTasks: [(group: TaskGroup, tasks: [TaskEntity])] {
@@ -155,9 +150,6 @@ struct TodayView: View {
                     // Header
                     headerView
 
-                    // Quick Add Card
-                    quickAddCard
-
                     // Tasks Section
                     tasksSection
 
@@ -178,10 +170,16 @@ struct TodayView: View {
                 .padding(.vertical, Constants.Spacing.sm)
             }
             .background(Color(.systemGroupedBackground))
+            .floatingActionButton {
+                showQuickAdd = true
+            }
             .refreshable {
                 await viewModel.loadTasks()
             }
             .navigationBarHidden(true)
+            .sheet(isPresented: $showQuickAdd) {
+                QuickAddSheet(viewModel: viewModel, isPresented: $showQuickAdd)
+            }
             .navigationDestination(isPresented: $showAddTask) {
                 AddTaskView(viewModel: viewModel)
             }
@@ -236,7 +234,11 @@ struct TodayView: View {
 
     // MARK: - Header View
     private var headerView: some View {
-        TodayHeaderView(formattedDate: formattedDate)
+        TodayHeaderView(
+            formattedDate: formattedDate,
+            completedCount: completedTasks.count,
+            totalCount: viewModel.tasks.count
+        )
     }
 
     // MARK: - Daily Progress Card
@@ -275,53 +277,15 @@ struct TodayView: View {
         .clipShape(RoundedRectangle(cornerRadius: Constants.UI.cornerRadius))
     }
 
-    // MARK: - Quick Add Card
-    private var quickAddCard: some View {
-        QuickAddCardView(
-            taskTitle: $quickTaskTitle,
-            isFocused: $isQuickAddFocused,
-            onAdd: addQuickTask,
-            onShowAdvanced: { showAddTask = true },
-            onShowAIChat: {
-                // Navigate to AI chat tab
-                // Since we can't directly change tabs from here, we'll show a hint
-                // In a real implementation, you'd use a binding or notification
-            }
-        )
-    }
-
     // MARK: - Tasks Section
     private var tasksSection: some View {
         VStack(alignment: .leading, spacing: Constants.Spacing.sm) {
             if todayTasks.isEmpty {
                 emptyStateView
             } else {
-                ForEach(groupedTasks, id: \.group) { groupData in
-                    VStack(alignment: .leading, spacing: Constants.Spacing.xs) {
-                        // Section Header
-                        HStack(spacing: Constants.Spacing.xs) {
-                            Image(systemName: groupData.group.icon)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(groupData.group.color)
-
-                            Text(groupData.group.title)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(groupData.group.color)
-
-                            Text("(\(groupData.tasks.count))")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-
-                            Spacer()
-                        }
-                        .padding(.horizontal, Constants.Spacing.xs)
-                        .padding(.top, groupData.group == .overdue ? 0 : Constants.Spacing.xs)
-
-                        // Tasks in this group
-                        ForEach(groupData.tasks) { task in
-                            taskRow(for: task, in: groupData.group)
-                        }
-                    }
+                // Flat AI-prioritized list - no sections
+                ForEach(Array(todayTasks.enumerated()), id: \.element.id) { index, task in
+                    taskRow(for: task, isTopPriority: index == 0)
                 }
             }
         }
@@ -330,25 +294,16 @@ struct TodayView: View {
 
     // MARK: - Task Row
     @ViewBuilder
-    private func taskRow(for task: TaskEntity, in group: TaskGroup) -> some View {
-        ModernTaskCardView(task: task) {
-            Task {
-                await toggleTaskCompletion(task)
-            }
-        }
-        .overlay(
-            // Add subtle red tint for overdue tasks
-            group == .overdue ?
-            RoundedRectangle(cornerRadius: Constants.UI.cornerRadius)
-                .stroke(Color.red.opacity(0.3), lineWidth: 1)
-            : nil
-        )
-        .overlay(
-            // Add blue highlight for "Now" tasks
-            group == .now ?
-            RoundedRectangle(cornerRadius: Constants.UI.cornerRadius)
-                .stroke(Color.blue.opacity(0.4), lineWidth: 2)
-            : nil
+    private func taskRow(for task: TaskEntity, isTopPriority: Bool) -> some View {
+        ModernTaskCardView(
+            task: task,
+            onToggleCompletion: {
+                Task {
+                    await toggleTaskCompletion(task)
+                }
+            },
+            showDoThisFirstBadge: isTopPriority,
+            useHumanReadableLabels: true
         )
         .onTapGesture {
             selectedTaskForDetail = task
@@ -526,50 +481,6 @@ struct TodayView: View {
     }
 
     // MARK: - Methods
-    private func addQuickTask() {
-        let trimmedTitle = quickTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else { return }
-
-        Task {
-            // Parse natural language input
-            let parsed = NaturalLanguageParser.parse(trimmedTitle)
-
-            // Use parsed metadata, fallback to defaults
-            let finalTitle = parsed.cleanTitle.isEmpty ? trimmedTitle : parsed.cleanTitle
-            // If no specific date was parsed, set dueDate to today at midnight (start of day)
-            // This represents "just a date" with no specific time
-            let finalDueDate: Date
-            if let parsedDate = parsed.dueDate {
-                finalDueDate = parsedDate
-            } else {
-                let calendar = Calendar.current
-                finalDueDate = calendar.startOfDay(for: Date())
-            }
-            let finalPriority = parsed.priority
-
-            // Find matching list if listHint was provided
-            var matchingList: TaskListEntity?
-            if let listHint = parsed.listHint {
-                matchingList = viewModel.taskLists.first { list in
-                    list.name.lowercased().contains(listHint.lowercased())
-                }
-            }
-
-            await viewModel.createTask(
-                title: finalTitle,
-                dueDate: finalDueDate,
-                scheduledTime: parsed.scheduledTime,
-                priority: finalPriority,
-                list: matchingList
-            )
-
-            await MainActor.run {
-                quickTaskTitle = ""
-                HapticManager.shared.success()
-            }
-        }
-    }
-
     private func toggleTaskCompletion(_ task: TaskEntity) async {
         let wasCompleted = task.isCompleted
         let remainingTasksBeforeToggle = todayTasks.count

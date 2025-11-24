@@ -26,6 +26,8 @@ extension TaskEntity {
     @NSManaged var priority: Int16
     @NSManaged var priorityOrder: Int16
     @NSManaged var focusTimeSeconds: Int32
+    @NSManaged var aiPriorityScore: Double
+    @NSManaged var estimatedDuration: Int16
     @NSManaged var isRecurring: Bool
     @NSManaged var recurrenceDays: String?
     @NSManaged var taskList: TaskListEntity?
@@ -167,5 +169,34 @@ extension TaskEntity {
         let adjustedWeekday = weekday == 1 ? 7 : weekday - 1
 
         return dayNumbers.contains(adjustedWeekday)
+    }
+
+    /// Check if task is a quick win (< 15 minutes)
+    var isQuickWin: Bool {
+        return estimatedDuration > 0 && estimatedDuration <= 15
+    }
+
+    /// Get staleness in days (how many days since created)
+    var stalenessInDays: Int {
+        let calendar = Calendar.current
+        let days = calendar.dateComponents([.day], from: createdAt, to: Date()).day ?? 0
+        return max(0, days)
+    }
+
+    /// Formatted estimated duration
+    var formattedEstimatedDuration: String? {
+        guard estimatedDuration > 0 else { return nil }
+
+        if estimatedDuration < 60 {
+            return "\(estimatedDuration) min"
+        } else {
+            let hours = estimatedDuration / 60
+            let minutes = estimatedDuration % 60
+            if minutes == 0 {
+                return "\(hours)h"
+            } else {
+                return "\(hours)h \(minutes)m"
+            }
+        }
     }
 }

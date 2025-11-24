@@ -57,6 +57,9 @@ class DataService {
             task.setRecurrenceDays(days)
         }
 
+        // Calculate initial AI priority score
+        task.aiPriorityScore = calculateAIPriorityScore(for: task)
+
         try persistenceController.save(context: viewContext)
 
         // Schedule notifications for the task
@@ -102,6 +105,11 @@ class DataService {
         }
         if let list = list {
             task.taskList = list
+        }
+
+        // Recalculate AI priority score if any relevant field changed
+        if dueDate != nil || scheduledTime != nil || priority != nil {
+            task.aiPriorityScore = calculateAIPriorityScore(for: task)
         }
 
         try persistenceController.save(context: viewContext)
@@ -181,13 +189,20 @@ class DataService {
         )
         fetchRequest.sortDescriptors = [
             NSSortDescriptor(keyPath: \TaskEntity.isCompleted, ascending: true),
-            NSSortDescriptor(keyPath: \TaskEntity.priorityOrder, ascending: true),
-            NSSortDescriptor(keyPath: \TaskEntity.scheduledTime, ascending: true),
-            NSSortDescriptor(keyPath: \TaskEntity.dueDate, ascending: true)
+            NSSortDescriptor(keyPath: \TaskEntity.aiPriorityScore, ascending: false), // Highest score first
+            NSSortDescriptor(keyPath: \TaskEntity.scheduledTime, ascending: true)
         ]
         fetchRequest.fetchBatchSize = 20  // Most users won't have more than 20 tasks per day
 
-        return try viewContext.fetch(fetchRequest)
+        let tasks = try viewContext.fetch(fetchRequest)
+
+        // Update AI scores before returning (ensures they're current)
+        for task in tasks where !task.isCompleted {
+            task.aiPriorityScore = calculateAIPriorityScore(for: task)
+        }
+        try? persistenceController.save(context: viewContext)
+
+        return tasks
     }
 
     /// Fetch upcoming tasks (next 7 days)
@@ -334,6 +349,94 @@ class DataService {
                 isScheduledTime: true
             )
         }
+    }
+
+    // MARK: - AI Prioritization
+
+    /// Calculate AI priority score for a task
+    /// Formula: Score = (Urgency × 3) + (Importance × 2) + (Quick Win × 1) + (Staleness × 1)
+    func calculateAIPriorityScore(for task: TaskEntity) -> Double {
+        var score: Double = 0
+
+        // Urgency scoring (weight: 3)
+        let urgencyScore = calculateUrgencyScore(for: task)
+        score += urgencyScore * 3
+
+        // Importance scoring (weight: 2) - based on manual priority
+        let importanceScore = calculateImportanceScore(for: task)
+        score += importanceScore * 2
+
+        // Quick win scoring (weight: 1)
+        let quickWinScore = task.isQuickWin ? 10.0 : 0.0
+        score += quickWinScore * 1
+
+        // Staleness scoring (weight: 1) - tasks sitting around for a while
+        let stalenessScore = calculateStalenessScore(for: task)
+        score += stalenessScore * 1
+
+        return score
+    }
+
+    /// Calculate urgency score based on due date and scheduled time
+    private func calculateUrgencyScore(for task: TaskEntity) -> Double {
+        let now = Date()
+        let calendar = Calendar.current
+
+        // Check scheduled time first (higher priority)
+        if let scheduledTime = task.scheduledTime {
+            if scheduledTime < now {
+                return 100 // Overdue scheduled time
+            } else if calendar.isDateInToday(scheduledTime) {
+                return 50 // Scheduled today
+            } else if calendar.isDateInTomorrow(scheduledTime) {
+                return 25 // Scheduled tomorrow
+            }
+        }
+
+        // Check due date
+        if let dueDate = task.dueDate {
+            if dueDate < now && !calendar.isDateInToday(dueDate) {
+                return 100 // Overdue
+            } else if calendar.isDateInToday(dueDate) {
+                return 50 // Due today
+            } else if calendar.isDateInTomorrow(dueDate) {
+                return 25 // Due tomorrow
+            }
+        }
+
+        return 0
+    }
+
+    /// Calculate importance score based on manual priority
+    private func calculateImportanceScore(for task: TaskEntity) -> Double {
+        switch task.priority {
+        case 2: return 30 // High priority
+        case 1: return 15 // Medium priority
+        default: return 0 // No/low priority
+        }
+    }
+
+    /// Calculate staleness score (tasks older than 3 days get extra points)
+    private func calculateStalenessScore(for task: TaskEntity) -> Double {
+        let stalenessInDays = task.stalenessInDays
+        guard stalenessInDays > 3 else { return 0 }
+
+        let staleDays = stalenessInDays - 3
+        let score = Double(staleDays) * 2
+        return min(score, 20) // Max +20 for staleness
+    }
+
+    /// Update AI priority scores for all incomplete tasks
+    func updateAIPriorityScores() throws {
+        let fetchRequest: NSFetchRequest<TaskEntity> = TaskEntity.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "isCompleted == NO")
+        let tasks = try viewContext.fetch(fetchRequest)
+
+        for task in tasks {
+            task.aiPriorityScore = calculateAIPriorityScore(for: task)
+        }
+
+        try persistenceController.save(context: viewContext)
     }
 
     // MARK: - Initialization Helpers

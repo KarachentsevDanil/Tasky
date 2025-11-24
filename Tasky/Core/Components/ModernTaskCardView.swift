@@ -12,6 +12,8 @@ internal import CoreData
 struct ModernTaskCardView: View {
     let task: TaskEntity
     let onToggleCompletion: () -> Void
+    var showDoThisFirstBadge: Bool = false
+    var useHumanReadableLabels: Bool = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -38,70 +40,35 @@ struct ModernTaskCardView: View {
                 .accessibilityValue(task.title)
 
                 // Task content
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(task.title)
-                        .font(task.isCompleted ? .footnote : .subheadline)
-                        .foregroundStyle(task.isCompleted ? .secondary : .primary)
-                        .strikethrough(task.isCompleted)
+                VStack(alignment: .leading, spacing: 4) {
+                    // "Do this first" badge
+                    if showDoThisFirstBadge && !task.isCompleted {
+                        DoThisFirstBadge()
+                    }
 
-                    // Metadata pills (hide for completed tasks to reduce visual weight)
-                    if hasMetadata && !task.isCompleted {
-                        HStack(spacing: 5) {
-                            // Priority pill
-                            if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority) {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "exclamationmark.circle.fill")
-                                        .font(.system(size: 8))
-                                    Text(priority.displayName)
-                                        .font(.system(size: 10, weight: .semibold))
-                                }
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    Capsule()
-                                        .fill(priority.color)
-                                )
-                            }
+                    // Task title with overdue indicator
+                    HStack(spacing: 6) {
+                        // Orange dot for overdue tasks
+                        if task.isOverdue && !task.isCompleted {
+                            Circle()
+                                .fill(Color.orange)
+                                .frame(width: 6, height: 6)
+                        }
 
-                            // Recurring pill
-                            if task.isRecurring {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "repeat")
-                                        .font(.system(size: 8))
-                                    Text("Daily")
-                                        .font(.system(size: 10, weight: .medium))
-                                }
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    Capsule()
-                                        .fill(Color.purple)
-                                )
-                            }
+                        Text(task.title)
+                            .font(task.isCompleted ? .footnote : .subheadline)
+                            .foregroundStyle(task.isCompleted ? .secondary : .primary)
+                            .strikethrough(task.isCompleted)
+                    }
 
-                            // Scheduled time
-                            if let formattedTime = task.formattedScheduledTime {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "clock")
-                                        .font(.system(size: 8))
-                                    Text(formattedTime)
-                                        .font(.system(size: 10))
-                                }
-                                .foregroundStyle(.blue)
-                            }
-
-                            // Due date (if different from scheduled)
-                            if task.scheduledTime == nil, let dueDate = task.dueDate {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "clock")
-                                        .font(.system(size: 8))
-                                    Text(formatDueDate(dueDate))
-                                        .font(.system(size: 10))
-                                }
-                                .foregroundStyle(.blue)
-                            }
+                    // Human-readable time label or metadata pills
+                    if !task.isCompleted {
+                        if useHumanReadableLabels, let timeLabel = task.humanReadableTimeLabel {
+                            Text(timeLabel)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else if hasMetadata {
+                            metadataPills
                         }
                     }
                 }
@@ -125,6 +92,69 @@ struct ModernTaskCardView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityTaskLabel)
         .accessibilityHint("Double tap to view task details")
+    }
+
+    // MARK: - Subviews
+
+    @ViewBuilder
+    private var metadataPills: some View {
+        HStack(spacing: 5) {
+            // Priority pill
+            if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority) {
+                HStack(spacing: 2) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 8))
+                    Text(priority.displayName)
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule()
+                        .fill(priority.color)
+                )
+            }
+
+            // Recurring pill
+            if task.isRecurring {
+                HStack(spacing: 2) {
+                    Image(systemName: "repeat")
+                        .font(.system(size: 8))
+                    Text("Daily")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule()
+                        .fill(Color.purple)
+                )
+            }
+
+            // Scheduled time
+            if let formattedTime = task.formattedScheduledTime {
+                HStack(spacing: 2) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 8))
+                    Text(formattedTime)
+                        .font(.system(size: 10))
+                }
+                .foregroundStyle(.blue)
+            }
+
+            // Due date (if different from scheduled)
+            if task.scheduledTime == nil, let dueDate = task.dueDate {
+                HStack(spacing: 2) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 8))
+                    Text(formatDueDate(dueDate))
+                        .font(.system(size: 10))
+                }
+                .foregroundStyle(.blue)
+            }
+        }
     }
 
     // MARK: - Computed Properties
@@ -185,51 +215,42 @@ struct ModernTaskCardView: View {
 }
 
 // MARK: - Preview
-#Preview("Incomplete Task") {
+#Preview {
+    VStack(spacing: Constants.Spacing.md) {
+        Text("Task Cards Preview")
+            .font(.headline)
+
+        ModernTaskCardView(
+            task: makePreviewTask(title: "Review PR", isOverdue: false),
+            onToggleCompletion: {}
+        )
+
+        ModernTaskCardView(
+            task: makePreviewTask(title: "Finish report", isOverdue: false),
+            onToggleCompletion: {},
+            showDoThisFirstBadge: true,
+            useHumanReadableLabels: true
+        )
+
+        ModernTaskCardView(
+            task: makePreviewTask(title: "Submit expenses", isOverdue: true),
+            onToggleCompletion: {},
+            useHumanReadableLabels: true
+        )
+    }
+    .padding()
+    .background(Color(.systemGroupedBackground))
+}
+
+private func makePreviewTask(title: String, isOverdue: Bool) -> TaskEntity {
     let context = PersistenceController.preview.viewContext
     let task = TaskEntity(context: context)
     task.id = UUID()
-    task.title = "Review pull request"
+    task.title = title
     task.isCompleted = false
     task.priority = 2
-    task.dueDate = Date()
-    task.notes = "Check for security issues"
-
-    return ModernTaskCardView(task: task) {
-        print("Toggle completion")
-    }
-    .padding()
-    .background(Color(.systemGroupedBackground))
-}
-
-#Preview("Completed Task") {
-    let context = PersistenceController.preview.viewContext
-    let task = TaskEntity(context: context)
-    task.id = UUID()
-    task.title = "Write documentation"
-    task.isCompleted = true
-    task.priority = 1
-
-    return ModernTaskCardView(task: task) {
-        print("Toggle completion")
-    }
-    .padding()
-    .background(Color(.systemGroupedBackground))
-}
-
-#Preview("Task with Scheduled Time") {
-    let context = PersistenceController.preview.viewContext
-    let task = TaskEntity(context: context)
-    task.id = UUID()
-    task.title = "Team meeting"
-    task.isCompleted = false
-    task.priority = 0
-    task.scheduledTime = Date()
-    task.isRecurring = true
-
-    return ModernTaskCardView(task: task) {
-        print("Toggle completion")
-    }
-    .padding()
-    .background(Color(.systemGroupedBackground))
+    task.dueDate = isOverdue ? Calendar.current.date(byAdding: .day, value: -2, to: Date()) : Date()
+    task.createdAt = Date()
+    task.aiPriorityScore = 100
+    return task
 }
