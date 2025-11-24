@@ -39,17 +39,9 @@ struct TodayHeaderView: View {
             // Progress bar + count
             if totalCount > 0 {
                 VStack(alignment: .leading, spacing: Constants.Spacing.xs) {
-                    HStack {
-                        Text("\(completedCount)/\(totalCount)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-
-                        Spacer()
-
-                        Text("\(Int(progress * 100))%")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("\(completedCount)/\(totalCount)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
 
                     // Mini progress bar
                     GeometryReader { geometry in
@@ -61,7 +53,7 @@ struct TodayHeaderView: View {
 
                             // Progress
                             RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.blue)
+                                .fill(Color.green)
                                 .frame(width: geometry.size.width * progress, height: 4)
                                 .animation(reduceMotion ? .none : .spring(response: 0.4, dampingFraction: 0.8), value: progress)
                         }

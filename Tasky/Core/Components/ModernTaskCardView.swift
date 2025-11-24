@@ -17,8 +17,8 @@ struct ModernTaskCardView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Priority accent bar
-            if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority) {
+            // Priority accent bar (hidden for AI priority task with gradient)
+            if task.priority > 0, let priority = Constants.TaskPriority(rawValue: task.priority), !showDoThisFirstBadge {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(priority.color)
                     .frame(width: 4)
@@ -30,7 +30,7 @@ struct ModernTaskCardView: View {
                 Button(action: onToggleCompletion) {
                     Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
                         .font(.title3)
-                        .foregroundStyle(task.isCompleted ? .green : Color(.systemGray3))
+                        .foregroundStyle(task.isCompleted ? .green : showDoThisFirstBadge && !task.isCompleted ? Color.white.opacity(0.8) : Color(.systemGray3))
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
@@ -41,15 +41,10 @@ struct ModernTaskCardView: View {
 
                 // Task content
                 VStack(alignment: .leading, spacing: 4) {
-                    // "Do this first" badge
-                    if showDoThisFirstBadge && !task.isCompleted {
-                        DoThisFirstBadge()
-                    }
-
                     // Task title with overdue indicator
                     HStack(spacing: 6) {
-                        // Orange dot for overdue tasks
-                        if task.isOverdue && !task.isCompleted {
+                        // Orange dot for overdue tasks (not shown on gradient background)
+                        if task.isOverdue && !task.isCompleted && !showDoThisFirstBadge {
                             Circle()
                                 .fill(Color.orange)
                                 .frame(width: 6, height: 6)
@@ -57,7 +52,8 @@ struct ModernTaskCardView: View {
 
                         Text(task.title)
                             .font(task.isCompleted ? .footnote : .subheadline)
-                            .foregroundStyle(task.isCompleted ? .secondary : .primary)
+                            .fontWeight(showDoThisFirstBadge && !task.isCompleted ? .semibold : .regular)
+                            .foregroundStyle(task.isCompleted ? .secondary : showDoThisFirstBadge && !task.isCompleted ? Color.white : .primary)
                             .strikethrough(task.isCompleted)
                     }
 
@@ -66,7 +62,7 @@ struct ModernTaskCardView: View {
                         if useHumanReadableLabels, let timeLabel = task.humanReadableTimeLabel {
                             Text(timeLabel)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(showDoThisFirstBadge ? Color.white.opacity(0.8) : .secondary)
                         } else if hasMetadata {
                             metadataPills
                         }
@@ -75,20 +71,38 @@ struct ModernTaskCardView: View {
 
                 Spacer()
 
-                // Notes indicator (green dot)
-                if task.notes != nil && !task.notes!.isEmpty {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: 5, height: 5)
+                // Right side content
+                HStack(spacing: Constants.Spacing.xs) {
+                    // "Do this first" badge - moved to right side
+                    if showDoThisFirstBadge && !task.isCompleted {
+                        DoThisFirstBadge()
+                    }
+
+                    // Notes indicator (green dot)
+                    if task.notes != nil && !task.notes!.isEmpty {
+                        Circle()
+                            .fill(showDoThisFirstBadge && !task.isCompleted ? Color.white.opacity(0.6) : .green)
+                            .frame(width: 5, height: 5)
+                    }
                 }
             }
-            .padding(.leading, task.priority > 0 ? Constants.Spacing.sm : Constants.Spacing.md)
+            .padding(.leading, task.priority > 0 && !showDoThisFirstBadge ? Constants.Spacing.sm : Constants.Spacing.md)
             .padding(.trailing, Constants.Spacing.md)
-            .padding(.vertical, task.isCompleted ? Constants.Spacing.xs : Constants.Spacing.sm)
+            .padding(.vertical, task.isCompleted ? Constants.Spacing.xs : Constants.Spacing.md)
         }
-        .background(Color(.systemBackground))
+        .background(
+            showDoThisFirstBadge && !task.isCompleted
+                ? AnyView(
+                    LinearGradient(
+                        colors: [Color(red: 0.4, green: 0.5, blue: 0.95), Color(red: 0.5, green: 0.4, blue: 0.9)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                : AnyView(Color(.systemBackground))
+        )
         .clipShape(RoundedRectangle(cornerRadius: Constants.Layout.cornerRadiusSmall))
-        .shadow(color: .black.opacity(0.02), radius: 2, y: 0.5)
+        .shadow(color: .black.opacity(showDoThisFirstBadge && !task.isCompleted ? 0.1 : 0.02), radius: showDoThisFirstBadge && !task.isCompleted ? 4 : 2, y: showDoThisFirstBadge && !task.isCompleted ? 2 : 0.5)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityTaskLabel)
         .accessibilityHint("Double tap to view task details")

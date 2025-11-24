@@ -18,15 +18,11 @@ struct DoThisFirstBadge: View {
             Text("Do this first")
                 .font(.caption2.weight(.semibold))
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(Color(red: 1.0, green: 0.85, blue: 0.4))
         .padding(.horizontal, Constants.Spacing.sm)
         .padding(.vertical, Constants.Spacing.xxs)
         .background(
-            LinearGradient(
-                colors: [.blue, .purple],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
+            Color.white.opacity(0.2)
         )
         .clipShape(Capsule())
     }

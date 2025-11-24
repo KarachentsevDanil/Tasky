@@ -24,6 +24,7 @@ struct TodayView: View {
     @State private var selectedTaskForDetail: TaskEntity?
     @State private var showCompletedTasks = false
     @State private var undoAction: UndoAction?
+    @State private var showAllTasks = false
 
     enum UndoAction {
         case deletion
@@ -88,6 +89,22 @@ struct TodayView: View {
 
     private var topPriorityTask: TaskEntity? {
         todayTasks.first
+    }
+
+    private var visibleTasksLimit: Int {
+        5
+    }
+
+    private var visibleTasks: [TaskEntity] {
+        if showAllTasks {
+            return todayTasks
+        } else {
+            return Array(todayTasks.prefix(visibleTasksLimit))
+        }
+    }
+
+    private var hiddenTasksCount: Int {
+        max(0, todayTasks.count - visibleTasksLimit)
     }
 
     private var groupedTasks: [(group: TaskGroup, tasks: [TaskEntity])] {
@@ -283,9 +300,26 @@ struct TodayView: View {
             if todayTasks.isEmpty {
                 emptyStateView
             } else {
-                // Flat AI-prioritized list - no sections
-                ForEach(Array(todayTasks.enumerated()), id: \.element.id) { index, task in
+                // Flat AI-prioritized list - limited view
+                ForEach(Array(visibleTasks.enumerated()), id: \.element.id) { index, task in
                     taskRow(for: task, isTopPriority: index == 0)
+                }
+
+                // Show more button
+                if hiddenTasksCount > 0 && !showAllTasks {
+                    Button {
+                        withAnimation(.spring(response: Constants.Animation.Spring.response, dampingFraction: Constants.Animation.Spring.dampingFraction)) {
+                            showAllTasks = true
+                        }
+                        HapticManager.shared.lightImpact()
+                    } label: {
+                        Text("+\(hiddenTasksCount) more task\(hiddenTasksCount == 1 ? "" : "s")")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.blue)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, Constants.Spacing.sm)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
