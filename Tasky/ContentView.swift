@@ -45,12 +45,12 @@ struct ContentView: View {
                 }
                 .tag(2)
 
-            // Browse Tab - Progress, Lists, and Settings
-            BrowseTabView(viewModel: viewModel)
+            // All Tasks Tab - Complete prioritized list
+            AllTasksView(viewModel: viewModel)
                 .tabItem {
-                    Image(systemName: "square.grid.2x2.fill")
+                    Image(systemName: "list.bullet")
                         .symbolRenderingMode(Constants.IconRendering.multicolor)
-                    Text("Browse")
+                    Text("All Tasks")
                 }
                 .tag(3)
         }
