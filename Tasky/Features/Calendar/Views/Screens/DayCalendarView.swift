@@ -39,18 +39,21 @@ struct DayCalendarView: View {
             GeometryReader { geometry in
                 ScrollView {
                     ZStack(alignment: .topLeading) {
-                        // Time grid background
+                        // Time grid background with global drag gesture
                         TimeGridView(
                             startHour: viewModel.startHour,
                             endHour: viewModel.endHour,
                             hourHeight: viewModel.hourHeight,
-                            onSlotTap: { hour, location in
-                                viewModel.handleTimeSlotTap(hour: hour, location: location)
+                            onSlotTap: { globalY in
+                                viewModel.handleTimeSlotTap(at: globalY)
                             },
-                            onSlotDragChanged: { hour, location in
-                                handleDragGesture(hour: hour, location: location)
+                            onDragChanged: { globalY in
+                                viewModel.updateDraggedEvent(to: globalY)
                             },
-                            onSlotDragEnded: {
+                            onDragStarted: { globalY in
+                                viewModel.startDraggingNewEvent(at: globalY)
+                            },
+                            onDragEnded: {
                                 viewModel.finishDraggingNewEvent()
                             }
                         )
@@ -210,48 +213,83 @@ struct DayCalendarView: View {
            let endTime = viewModel.dragEndTime {
 
             let yPosition = viewModel.yPositionFromTime(startTime)
-            let duration = endTime.timeIntervalSince(startTime) / 60 // minutes
-            let height = CGFloat(duration) * (viewModel.hourHeight / 60)
+            let durationMinutes = Int(endTime.timeIntervalSince(startTime) / 60)
+            let height = CGFloat(durationMinutes) * (viewModel.hourHeight / 60)
 
             let availableWidth = containerWidth - Layout.timeLabelWidth - Layout.spacing - Layout.dividerWidth - Layout.spacing - (Layout.horizontalPadding * 2)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("New Event")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundColor(.blue)
-
-                Text(formatTimeRange(start: startTime, end: endTime))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(8)
-            .frame(width: availableWidth - 10, height: max(40, height), alignment: .topLeading)
-            .background(
+            ZStack(alignment: .topLeading) {
+                // Background
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.blue.opacity(0.15))
-            )
-            .overlay(
+
+                // Border
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.blue, lineWidth: 2)
-            )
+
+                // Content
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("New Event")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(.blue)
+
+                    Text(formatTimeRange(start: startTime, end: endTime))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    Spacer(minLength: 0)
+
+                    // Duration badge at bottom
+                    if height > 60 {
+                        Text(formatDuration(minutes: durationMinutes))
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.blue)
+                    }
+                }
+                .padding(8)
+
+                // Top resize handle indicator
+                VStack {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.blue)
+                        .frame(width: 40, height: 4)
+                        .padding(.top, 4)
+
+                    Spacer()
+
+                    // Bottom resize handle indicator
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.blue)
+                        .frame(width: 40, height: 4)
+                        .padding(.bottom, 4)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .frame(width: availableWidth - 10, height: max(40, height))
             .offset(
                 x: Layout.timeLabelWidth + Layout.spacing + Layout.dividerWidth + Layout.spacing + Layout.horizontalPadding,
                 y: yPosition
             )
             .zIndex(1)
             .allowsHitTesting(false)
+            .animation(.spring(response: 0.2, dampingFraction: 0.8), value: height)
+        }
+    }
+
+    // MARK: - Duration Formatting
+    private func formatDuration(minutes: Int) -> String {
+        if minutes < 60 {
+            return "\(minutes)m"
+        } else if minutes % 60 == 0 {
+            return "\(minutes / 60)h"
+        } else {
+            let hours = minutes / 60
+            let mins = minutes % 60
+            return "\(hours)h \(mins)m"
         }
     }
 
     // MARK: - Gesture Handlers
-    private func handleDragGesture(hour: Int, location: CGPoint) {
-        if !viewModel.isDraggingNewEvent {
-            viewModel.startDraggingNewEvent(hour: hour, location: location)
-        } else {
-            viewModel.updateDraggedEvent(hour: hour, location: location)
-        }
-    }
-
     private func handleUnscheduledTaskTap(_ task: TaskEntity) {
         // Open schedule sheet for this specific task
         let now = Date()
