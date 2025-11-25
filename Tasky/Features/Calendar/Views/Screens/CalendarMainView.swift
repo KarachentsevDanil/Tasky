@@ -68,7 +68,7 @@ struct CalendarMainView: View {
                     onShowFullForm: {
                         showFullAddTask = true
                     },
-                    preselectedDate: selectedView == .upcoming ? selectedDate : nil
+                    preselectedDate: currentPreselectedDate
                 )
             }
             .navigationDestination(isPresented: $showFullAddTask) {
@@ -157,6 +157,18 @@ struct CalendarMainView: View {
             .refreshable {
                 await viewModel.loadTasks()
             }
+        }
+    }
+
+    // MARK: - Computed Properties
+
+    /// Returns the appropriate preselected date based on current view mode
+    private var currentPreselectedDate: Date {
+        switch selectedView {
+        case .day:
+            return dayCalendarViewModel.selectedDate
+        case .upcoming:
+            return selectedDate
         }
     }
 
