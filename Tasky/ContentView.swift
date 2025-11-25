@@ -37,7 +37,7 @@ struct ContentView: View {
                 .tag(1)
 
             // AI Assistant Tab - Chat-based task creation
-            AIChatView(dataService: viewModel.dataService)
+            AIChatView(dataService: viewModel.dataService, taskListViewModel: viewModel)
                 .tabItem {
                     Image(systemName: "sparkles")
                         .symbolRenderingMode(Constants.IconRendering.multicolor)
@@ -45,12 +45,12 @@ struct ContentView: View {
                 }
                 .tag(2)
 
-            // All Tasks Tab - Complete prioritized list
-            AllTasksView(viewModel: viewModel)
+            // Browse Tab - Lists, Progress, and Settings
+            BrowseTabView(viewModel: viewModel)
                 .tabItem {
-                    Image(systemName: "list.bullet")
+                    Image(systemName: "folder.fill")
                         .symbolRenderingMode(Constants.IconRendering.multicolor)
-                    Text("All Tasks")
+                    Text("Browse")
                 }
                 .tag(3)
         }

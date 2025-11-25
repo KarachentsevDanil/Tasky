@@ -36,7 +36,8 @@ class DataService {
         priorityOrder: Int16 = 0,
         list: TaskListEntity? = nil,
         isRecurring: Bool = false,
-        recurrenceDays: [Int]? = nil
+        recurrenceDays: [Int]? = nil,
+        estimatedDuration: Int16 = 0
     ) throws -> TaskEntity {
         let task = TaskEntity(context: viewContext)
         task.id = UUID()
@@ -50,6 +51,7 @@ class DataService {
         task.isCompleted = false
         task.createdAt = Date()
         task.focusTimeSeconds = 0
+        task.estimatedDuration = estimatedDuration
         task.taskList = list
         task.isRecurring = isRecurring
 
@@ -143,6 +145,28 @@ class DataService {
 
         viewContext.delete(task)
         try persistenceController.save(context: viewContext)
+    }
+
+    /// Delete a task by its UUID
+    func deleteTaskById(_ id: UUID) throws {
+        let request = TaskEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        request.fetchLimit = 1
+
+        let tasks = try viewContext.fetch(request)
+        if let task = tasks.first {
+            try deleteTask(task)
+        }
+    }
+
+    /// Fetch a task by its UUID
+    func fetchTaskById(_ id: UUID) throws -> TaskEntity? {
+        let request = TaskEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        request.fetchLimit = 1
+
+        let tasks = try viewContext.fetch(request)
+        return tasks.first
     }
 
     /// Reorder tasks by updating priorityOrder

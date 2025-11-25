@@ -21,6 +21,7 @@ struct SettingsView: View {
     @AppStorage("scheduledTimeReminders") private var scheduledTimeReminders = true
     @AppStorage("advanceReminders") private var advanceReminders = true
     @AppStorage("timerNotifications") private var timerNotifications = true
+    @AppStorage("aiTaskPreview") private var aiTaskPreview = true
 
     @State private var showingExportSheet = false
     @State private var showingPermissionAlert = false
@@ -97,6 +98,17 @@ struct SettingsView: View {
                     Text("Feedback")
                 } footer: {
                     Text("Feel subtle vibrations when interacting with tasks")
+                }
+
+                // AI Assistant Section
+                Section {
+                    Toggle(isOn: $aiTaskPreview) {
+                        Label("Task Preview", systemImage: "eye")
+                    }
+                } header: {
+                    Text("AI Assistant")
+                } footer: {
+                    Text("Show a preview card after creating tasks via AI, allowing you to edit or undo")
                 }
 
                 // Data Section

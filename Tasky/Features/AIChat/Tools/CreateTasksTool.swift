@@ -8,14 +8,16 @@
 import Foundation
 import FoundationModels
 
+/// Notification posted when tasks are created via AI
+extension Notification.Name {
+    static let aiTasksCreated = Notification.Name("aiTasksCreated")
+}
+
 /// Tool for creating one or multiple tasks via LLM
 struct CreateTasksTool: Tool {
-    let name = "create_tasks"
+    let name = "createTasks"
 
-    let description = """
-    Creates one or multiple tasks in the user's task list. Use this when the user wants to add new tasks, \
-    schedule activities, or set reminders. You can create multiple tasks at once if the user mentions several things to do.
-    """
+    let description = "Create new tasks. Triggers: add, create, remind me, new task, schedule, set reminder."
 
     // DataService instance for task creation
     let dataService: DataService
@@ -55,6 +57,12 @@ struct CreateTasksTool: Tool {
 
             @Guide(description: "Days of week for recurrence (1=Mon, 2=Tue, ..., 7=Sun)")
             let recurrenceDays: [Int]?
+
+            @Guide(description: "Optional list/project name to assign the task to. Match against user's existing lists.")
+            let listName: String?
+
+            @Guide(description: "Estimated duration in minutes. Common values: 5, 15, 30, 60")
+            let estimatedMinutes: Int?
         }
     }
 
@@ -64,10 +72,16 @@ struct CreateTasksTool: Tool {
         return GeneratedContent(result)
     }
 
-    /// Executes the tool to create tasks
+    /// Executes the tool to create tasks (runs on MainActor for Core Data access)
+    @MainActor
     private func executeTasks(arguments: Arguments) async throws -> String {
         var createdTitles: [String] = []
+        var createdTasksInfo: [CreatedTaskInfo] = []
         var failedCount = 0
+        var listNotFoundNames: [String] = []
+
+        // Fetch all available lists once for matching
+        let allLists = (try? dataService.fetchAllTaskLists()) ?? []
 
         for taskData in arguments.tasks {
             do {
@@ -88,6 +102,21 @@ struct CreateTasksTool: Tool {
                 let scheduledTime = taskData.scheduledTime.flatMap { parseISO8601DateWithTime($0) }
                 let scheduledEndTime = taskData.scheduledEndTime.flatMap { parseISO8601DateWithTime($0) }
 
+                // Find matching list by name
+                var matchedList: TaskListEntity?
+                if let listName = taskData.listName {
+                    matchedList = findMatchingList(listName, from: allLists)
+                    if matchedList == nil {
+                        listNotFoundNames.append(listName)
+                        print("⚠️ List '\(listName)' not found, task will go to Inbox")
+                    } else {
+                        print("📂 Matched list '\(listName)' -> '\(matchedList?.name ?? "unknown")'")
+                    }
+                }
+
+                // Calculate estimated duration
+                let estimatedDuration = Int16(min(max(taskData.estimatedMinutes ?? 0, 0), 480)) // Max 8 hours
+
                 // Debug logging
                 print("📅 CreateTasksTool - Parsing dates for '\(taskData.title)':")
                 print("  - Raw dueDate string: \(taskData.dueDate ?? "nil")")
@@ -96,24 +125,39 @@ struct CreateTasksTool: Tool {
                 print("  - Parsed scheduledTime: \(scheduledTime?.description ?? "nil")")
                 print("  - Raw scheduledEndTime string: \(taskData.scheduledEndTime ?? "nil")")
                 print("  - Parsed scheduledEndTime: \(scheduledEndTime?.description ?? "nil")")
+                print("  - List: \(matchedList?.name ?? "Inbox")")
+                print("  - Estimated duration: \(estimatedDuration) min")
 
                 // Validate priority
                 let priority = Int16(min(max(taskData.priority ?? 0, 0), 3))
 
                 // Create the task
-                _ = try dataService.createTask(
+                let createdTask = try dataService.createTask(
                     title: taskData.title,
                     notes: taskData.notes,
                     dueDate: dueDate,
                     scheduledTime: scheduledTime,
                     scheduledEndTime: scheduledEndTime,
                     priority: priority,
-                    list: nil,
+                    list: matchedList,
                     isRecurring: taskData.isRecurring ?? false,
-                    recurrenceDays: taskData.recurrenceDays
+                    recurrenceDays: taskData.recurrenceDays,
+                    estimatedDuration: estimatedDuration
                 )
 
                 createdTitles.append(taskData.title)
+
+                // Build CreatedTaskInfo for preview
+                let taskInfo = CreatedTaskInfo(
+                    title: taskData.title,
+                    dueDate: dueDate,
+                    priority: Int(priority),
+                    listName: matchedList?.name,
+                    estimatedMinutes: Int(estimatedDuration),
+                    taskEntityId: createdTask.id
+                )
+                createdTasksInfo.append(taskInfo)
+
                 print("✅ Successfully created task '\(taskData.title)' with dueDate: \(dueDate != nil), scheduledTime: \(scheduledTime != nil), scheduledEndTime: \(scheduledEndTime != nil)")
             } catch {
                 failedCount += 1
@@ -125,17 +169,62 @@ struct CreateTasksTool: Tool {
         let totalRequested = arguments.tasks.count
 
         // Format response message
+        var response: String
         if createdCount == 0 {
-            return "Sorry, I couldn't create any tasks. Please try again."
+            response = "Sorry, I couldn't create any tasks. Please try again."
         } else if createdCount == 1 {
-            return "✓ Created task: \"\(createdTitles[0])\""
+            response = "✓ Created task: \"\(createdTitles[0])\""
         } else {
             let taskList = createdTitles.map { "• \($0)" }.joined(separator: "\n")
             let header = createdCount == totalRequested
                 ? "✓ Created \(createdCount) tasks:"
                 : "✓ Created \(createdCount) of \(totalRequested) tasks:"
-            return "\(header)\n\(taskList)"
+            response = "\(header)\n\(taskList)"
         }
+
+        // Add note about lists not found
+        if !listNotFoundNames.isEmpty {
+            let uniqueListNames = Array(Set(listNotFoundNames))
+            if uniqueListNames.count == 1 {
+                response += "\n\n(Note: List '\(uniqueListNames[0])' was not found, task added to Inbox)"
+            } else {
+                response += "\n\n(Note: Lists not found: \(uniqueListNames.joined(separator: ", ")); tasks added to Inbox)"
+            }
+        }
+
+        // Post notification with created tasks info for preview
+        if !createdTasksInfo.isEmpty {
+            NotificationCenter.default.post(
+                name: .aiTasksCreated,
+                object: nil,
+                userInfo: ["tasks": createdTasksInfo]
+            )
+        }
+
+        return response
+    }
+
+    /// Find a matching list by name (case-insensitive, with fuzzy matching)
+    @MainActor
+    private func findMatchingList(_ name: String, from lists: [TaskListEntity]) -> TaskListEntity? {
+        let lowercasedName = name.lowercased()
+
+        // Exact match first
+        if let exact = lists.first(where: { $0.name.lowercased() == lowercasedName }) {
+            return exact
+        }
+
+        // Fuzzy match (contains)
+        if let partial = lists.first(where: { $0.name.lowercased().contains(lowercasedName) }) {
+            return partial
+        }
+
+        // Reverse fuzzy match (name contains list name)
+        if let reverse = lists.first(where: { lowercasedName.contains($0.name.lowercased()) && !$0.name.isEmpty }) {
+            return reverse
+        }
+
+        return nil
     }
 
     /// Parse ISO 8601 date string and normalize to start of day in user's local timezone

@@ -21,8 +21,42 @@ struct BrowseTabView: View {
     var body: some View {
         NavigationStack {
             List {
-                // Progress Section
+                // All Tasks Section
                 Section {
+                    NavigationLink {
+                        AllTasksView(viewModel: viewModel)
+                            .navigationBarTitleDisplayMode(.inline)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "list.bullet")
+                                .font(.title3)
+                                .foregroundStyle(.purple)
+                                .frame(width: 32)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("All Tasks")
+                                    .font(.body.weight(.semibold))
+
+                                Text("Complete prioritized task list")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            if viewModel.tasks.filter({ !$0.isCompleted }).count > 0 {
+                                Text("\(viewModel.tasks.filter { !$0.isCompleted }.count)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.purple)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+
                     NavigationLink {
                         ProgressTabView(viewModel: viewModel)
                             .navigationBarTitleDisplayMode(.inline)
@@ -45,7 +79,7 @@ struct BrowseTabView: View {
                         .padding(.vertical, 4)
                     }
                 } header: {
-                    Text("Analytics")
+                    Text("Overview")
                 }
 
                 // Smart Lists Section
