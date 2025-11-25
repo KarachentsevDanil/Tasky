@@ -15,14 +15,40 @@ struct UndoToastView: View {
     let onUndo: () -> Void
     let onDismiss: () -> Void
 
+    // MARK: - Constants
+    private let autoDismissSeconds: Double = 5.0
+    private let timerInterval: Double = 0.05
+
+    // MARK: - State
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     @State private var offset: CGFloat = 100
+    @State private var progress: CGFloat = 1.0
+    @State private var timer: Timer?
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundStyle(.secondary)
-                .font(.body.weight(.medium))
+            // Circular countdown timer with icon
+            ZStack {
+                // Background circle
+                Circle()
+                    .stroke(Color.secondary.opacity(0.2), lineWidth: 2.5)
+                    .frame(width: 28, height: 28)
+
+                // Progress circle
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(
+                        Color.accentColor,
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                    )
+                    .frame(width: 28, height: 28)
+                    .rotationEffect(.degrees(-90))
+
+                // Icon in center
+                Image(systemName: icon)
+                    .foregroundStyle(.secondary)
+                    .font(.caption.weight(.medium))
+            }
 
             Text(message)
                 .font(.subheadline.weight(.medium))
@@ -32,6 +58,7 @@ struct UndoToastView: View {
 
             Button {
                 HapticManager.shared.lightImpact()
+                stopTimer()
                 onUndo()
             } label: {
                 Text("Undo")
@@ -53,14 +80,36 @@ struct UndoToastView: View {
             withAnimation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.7)) {
                 offset = 0
             }
-
-            // Auto-dismiss after 5 seconds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                dismissToast()
-            }
+            startCountdown()
+        }
+        .onDisappear {
+            stopTimer()
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(message). Double tap undo button to restore.")
+    }
+
+    // MARK: - Timer Methods
+
+    private func startCountdown() {
+        progress = 1.0
+        let decrementAmount = timerInterval / autoDismissSeconds
+
+        timer = Timer.scheduledTimer(withTimeInterval: timerInterval, repeats: true) { _ in
+            if progress > 0 {
+                withAnimation(reduceMotion ? .none : .linear(duration: timerInterval)) {
+                    progress -= decrementAmount
+                }
+            } else {
+                stopTimer()
+                dismissToast()
+            }
+        }
+    }
+
+    private func stopTimer() {
+        timer?.invalidate()
+        timer = nil
     }
 
     private func dismissToast() {
