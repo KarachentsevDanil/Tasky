@@ -70,6 +70,8 @@ struct ManageListTool: Tool {
     ]
 
     func call(arguments: Arguments) async throws -> GeneratedContent {
+        // Track usage for personalized suggestions
+        await AIUsageTracker.shared.trackToolCall("manageList")
         let result = await executeAction(arguments: arguments)
         return GeneratedContent(result)
     }

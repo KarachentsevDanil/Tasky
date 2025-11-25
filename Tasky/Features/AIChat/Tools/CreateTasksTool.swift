@@ -68,6 +68,8 @@ struct CreateTasksTool: Tool {
 
     /// Implements the Tool protocol
     func call(arguments: Arguments) async throws -> GeneratedContent {
+        // Track usage for personalized suggestions
+        await AIUsageTracker.shared.trackToolCall("createTasks")
         let result = try await executeTasks(arguments: arguments)
         return GeneratedContent(result)
     }

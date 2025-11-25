@@ -29,6 +29,8 @@ struct DeleteTaskTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> GeneratedContent {
+        // Track usage for personalized suggestions
+        await AIUsageTracker.shared.trackToolCall("deleteTask")
         let result = await executeDelete(arguments: arguments)
         return GeneratedContent(result)
     }

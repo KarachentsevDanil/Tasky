@@ -284,13 +284,15 @@ class AIChatViewModel: ObservableObject {
                 ManageListTool(dataService: dataService),
                 // Productivity tools
                 TaskAnalyticsTool(dataService: dataService),
-                FocusSessionTool(dataService: dataService)
+                FocusSessionTool(dataService: dataService),
+                // Help tool
+                ListActionsTool()
             ],
             instructions: systemPromptCache
         )
 
         // Initialize token count with system prompt + tool definitions (~50 tokens per tool)
-        estimatedTokenCount = estimateTokens(systemPromptCache) + (9 * 50)
+        estimatedTokenCount = estimateTokens(systemPromptCache) + (10 * 50)
 
         // Prewarm session for faster first response
         session?.prewarm()

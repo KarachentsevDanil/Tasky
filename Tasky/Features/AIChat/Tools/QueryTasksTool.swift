@@ -37,6 +37,9 @@ struct QueryTasksTool: Tool {
 
     /// Implements the Tool protocol
     func call(arguments: Arguments) async throws -> GeneratedContent {
+        // Track usage for personalized suggestions
+        await AIUsageTracker.shared.trackToolCall("queryTasks")
+
         let result = await executeQuery(arguments: arguments)
         return GeneratedContent(result)
     }

@@ -7,7 +7,8 @@
 
 import SwiftUI
 
-/// View displaying data-driven suggestion chips for AI chat
+/// Horizontal scrolling suggestion chips for AI chat
+/// Follows iOS HIG patterns (like Maps, Messages app suggestions)
 struct SuggestionChipsView: View {
 
     // MARK: - Properties
@@ -16,22 +17,38 @@ struct SuggestionChipsView: View {
 
     // MARK: - Body
     var body: some View {
-        VStack(alignment: .leading, spacing: Constants.Spacing.sm) {
-            Text("Suggestions")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.leading, 4)
-
-            FlowLayout(spacing: Constants.Spacing.sm) {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Constants.Spacing.sm) {
                 ForEach(suggestions) { suggestion in
                     SuggestionChip(suggestion: suggestion) {
                         onSuggestionTapped(suggestion)
                     }
                 }
             }
+            .padding(.horizontal, Constants.Spacing.lg)
+            .padding(.vertical, Constants.Spacing.sm)
         }
-        .padding(.horizontal, Constants.Spacing.lg)
-        .padding(.vertical, Constants.Spacing.md)
+        .scrollClipDisabled()
+        .mask(
+            // Fade edges to hint at scrollability
+            HStack(spacing: 0) {
+                LinearGradient(
+                    colors: [.clear, .white],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: 8)
+
+                Color.white
+
+                LinearGradient(
+                    colors: [.white, .clear],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: 8)
+            }
+        )
     }
 }
 
@@ -41,113 +58,107 @@ struct SuggestionChip: View {
     let suggestion: SuggestionEngine.Suggestion
     let action: () -> Void
 
+    @State private var isPressed = false
+
     var body: some View {
         Button(action: {
             HapticManager.shared.lightImpact()
             action()
         }) {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 Image(systemName: suggestion.icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(iconColor)
+
                 Text(suggestion.text)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 14, weight: .medium))
                     .lineLimit(1)
             }
             .foregroundStyle(.primary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(height: 44)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 10)
+                Capsule()
                     .fill(Color(.systemGray6))
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(Color(.systemGray4).opacity(0.5), lineWidth: 0.5)
+                    )
             )
+            .scaleEffect(isPressed ? 0.95 : 1.0)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(suggestion.text)
         .accessibilityHint("Double tap to use this suggestion")
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    withAnimation(.easeInOut(duration: 0.1)) {
+                        isPressed = true
+                    }
+                }
+                .onEnded { _ in
+                    withAnimation(.easeInOut(duration: 0.1)) {
+                        isPressed = false
+                    }
+                }
+        )
     }
-}
 
-// MARK: - Flow Layout for Wrapping Chips
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = arrange(proposal: proposal, subviews: subviews)
-        return result.size
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = arrange(proposal: proposal, subviews: subviews)
-
-        for (index, frame) in result.frames.enumerated() {
-            subviews[index].place(
-                at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
-                proposal: ProposedViewSize(frame.size)
-            )
+    private var iconColor: Color {
+        switch suggestion.type {
+        case .query:
+            return .blue
+        case .action:
+            return .orange
+        case .contextual:
+            return .purple
         }
-    }
-
-    private func arrange(proposal: ProposedViewSize, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
-        let maxWidth = proposal.width ?? .infinity
-        var frames: [CGRect] = []
-        var currentX: CGFloat = 0
-        var currentY: CGFloat = 0
-        var lineHeight: CGFloat = 0
-        var maxX: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-
-            if currentX + size.width > maxWidth && currentX > 0 {
-                // Move to next line
-                currentX = 0
-                currentY += lineHeight + spacing
-                lineHeight = 0
-            }
-
-            frames.append(CGRect(origin: CGPoint(x: currentX, y: currentY), size: size))
-            lineHeight = max(lineHeight, size.height)
-            maxX = max(maxX, currentX + size.width)
-            currentX += size.width + spacing
-        }
-
-        return (CGSize(width: maxX, height: currentY + lineHeight), frames)
     }
 }
 
 // MARK: - Preview
 #Preview {
-    SuggestionChipsView(
-        suggestions: [
-            SuggestionEngine.Suggestion(
-                text: "What's due today?",
-                prompt: "What's due today?",
-                icon: "calendar",
-                type: .query
-            ),
-            SuggestionEngine.Suggestion(
-                text: "Process inbox (5)",
-                prompt: "What's in my inbox?",
-                icon: "tray.full",
-                type: .query
-            ),
-            SuggestionEngine.Suggestion(
-                text: "Add to Work",
-                prompt: "Add task to Work list: ",
-                icon: "folder",
-                type: .action
-            ),
-            SuggestionEngine.Suggestion(
-                text: "Plan tomorrow",
-                prompt: "What's due tomorrow?",
-                icon: "moon.stars",
-                type: .query
-            )
-        ],
-        onSuggestionTapped: { suggestion in
-            print("Tapped: \(suggestion.text)")
-        }
-    )
+    VStack {
+        SuggestionChipsView(
+            suggestions: [
+                SuggestionEngine.Suggestion(
+                    text: "What's due today?",
+                    prompt: "What's due today?",
+                    icon: "calendar",
+                    type: .query
+                ),
+                SuggestionEngine.Suggestion(
+                    text: "Process inbox (5)",
+                    prompt: "What's in my inbox?",
+                    icon: "tray.full",
+                    type: .query
+                ),
+                SuggestionEngine.Suggestion(
+                    text: "Add to Work",
+                    prompt: "Add task to Work list: ",
+                    icon: "folder",
+                    type: .action
+                ),
+                SuggestionEngine.Suggestion(
+                    text: "Plan tomorrow",
+                    prompt: "What's due tomorrow?",
+                    icon: "moon.stars",
+                    type: .contextual
+                ),
+                SuggestionEngine.Suggestion(
+                    text: "High priority",
+                    prompt: "Show high priority tasks",
+                    icon: "flag.fill",
+                    type: .query
+                )
+            ],
+            onSuggestionTapped: { suggestion in
+                print("Tapped: \(suggestion.text)")
+            }
+        )
+
+        Spacer()
+    }
     .background(Color(.systemGroupedBackground))
 }

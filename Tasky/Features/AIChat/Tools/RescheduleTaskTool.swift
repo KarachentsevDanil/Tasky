@@ -42,6 +42,8 @@ struct RescheduleTaskTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> GeneratedContent {
+        // Track usage for personalized suggestions
+        await AIUsageTracker.shared.trackToolCall("rescheduleTask")
         let result = await executeReschedule(arguments: arguments)
         return GeneratedContent(result)
     }

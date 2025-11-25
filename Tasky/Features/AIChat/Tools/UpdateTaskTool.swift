@@ -44,6 +44,8 @@ struct UpdateTaskTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> GeneratedContent {
+        // Track usage for personalized suggestions
+        await AIUsageTracker.shared.trackToolCall("updateTask")
         let result = await executeUpdate(arguments: arguments)
         return GeneratedContent(result)
     }

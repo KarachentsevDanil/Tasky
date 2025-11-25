@@ -33,6 +33,8 @@ struct TaskAnalyticsTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> GeneratedContent {
+        // Track usage for personalized suggestions
+        await AIUsageTracker.shared.trackToolCall("taskAnalytics")
         let result = await executeAnalytics(arguments: arguments)
         return GeneratedContent(result)
     }

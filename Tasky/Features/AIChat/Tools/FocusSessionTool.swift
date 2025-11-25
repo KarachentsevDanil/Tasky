@@ -36,6 +36,8 @@ struct FocusSessionTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> GeneratedContent {
+        // Track usage for personalized suggestions
+        await AIUsageTracker.shared.trackToolCall("focusSession")
         let result = await executeAction(arguments: arguments)
         return GeneratedContent(result)
     }

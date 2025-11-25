@@ -32,6 +32,8 @@ struct CompleteTaskTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> GeneratedContent {
+        // Track usage for personalized suggestions
+        await AIUsageTracker.shared.trackToolCall("completeTask")
         let result = await executeCompletion(arguments: arguments)
         return GeneratedContent(result)
     }
