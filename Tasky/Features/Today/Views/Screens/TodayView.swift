@@ -329,38 +329,31 @@ struct TodayView: View {
     // MARK: - Task Row
     @ViewBuilder
     private func taskRow(for task: TaskEntity, isTopPriority: Bool) -> some View {
-        ModernTaskCardView(
-            task: task,
-            onToggleCompletion: {
+        SwipeableTaskCard(
+            onComplete: {
                 Task {
                     await toggleTaskCompletion(task)
                 }
             },
-            showDoThisFirstBadge: isTopPriority,
-            useHumanReadableLabels: true
-        )
-        .onTapGesture {
-            selectedTaskForDetail = task
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            Button {
-                Task {
-                    await toggleTaskCompletion(task)
-                }
-            } label: {
-                Label("Complete", systemImage: "checkmark")
-            }
-            .tint(.green)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
+            onDelete: {
                 Task {
                     await viewModel.deleteTaskWithUndo(task)
                     undoAction = .deletion
-                    HapticManager.shared.mediumImpact()
                 }
-            } label: {
-                Label("Delete", systemImage: "trash")
+            }
+        ) {
+            ModernTaskCardView(
+                task: task,
+                onToggleCompletion: {
+                    Task {
+                        await toggleTaskCompletion(task)
+                    }
+                },
+                showDoThisFirstBadge: isTopPriority,
+                useHumanReadableLabels: true
+            )
+            .onTapGesture {
+                selectedTaskForDetail = task
             }
         }
         .contextMenu {

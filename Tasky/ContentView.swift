@@ -41,7 +41,7 @@ struct ContentView: View {
                 .tabItem {
                     Image(systemName: "sparkles")
                         .symbolRenderingMode(Constants.IconRendering.multicolor)
-                    Text("AI Coach")
+                    Text("AI Assistant")
                 }
                 .tag(2)
 

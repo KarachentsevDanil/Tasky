@@ -86,6 +86,10 @@ struct TodayEmptyStateView: View {
                     ))
                     .frame(width: 100, height: 100)
                     .scaleEffect(isAnimating ? 1.1 : 1.0)
+                    .animation(
+                        reduceMotion ? .none : .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                        value: isAnimating
+                    )
 
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 48))
@@ -97,7 +101,12 @@ struct TodayEmptyStateView: View {
                         )
                     )
                     .scaleEffect(isAnimating ? 1.0 : 0.8)
+                    .animation(
+                        reduceMotion ? .none : .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                        value: isAnimating
+                    )
             }
+            .frame(width: 110, height: 110) // Fixed frame to prevent layout shifts
             .accessibilityHidden(true)
 
             // Title & Subtitle
@@ -168,13 +177,7 @@ struct TodayEmptyStateView: View {
     // MARK: - Animation
     private func startAnimation() {
         guard !reduceMotion else { return }
-
-        withAnimation(
-            .easeInOut(duration: 1.5)
-            .repeatForever(autoreverses: true)
-        ) {
-            isAnimating = true
-        }
+        isAnimating = true
     }
 }
 

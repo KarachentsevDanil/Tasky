@@ -58,8 +58,6 @@ struct SuggestionChip: View {
     let suggestion: SuggestionEngine.Suggestion
     let action: () -> Void
 
-    @State private var isPressed = false
-
     var body: some View {
         Button(action: {
             HapticManager.shared.lightImpact()
@@ -85,24 +83,10 @@ struct SuggestionChip: View {
                             .strokeBorder(Color(.systemGray4).opacity(0.5), lineWidth: 0.5)
                     )
             )
-            .scaleEffect(isPressed ? 0.95 : 1.0)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SuggestionChipButtonStyle())
         .accessibilityLabel(suggestion.text)
         .accessibilityHint("Double tap to use this suggestion")
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    withAnimation(.easeInOut(duration: 0.1)) {
-                        isPressed = true
-                    }
-                }
-                .onEnded { _ in
-                    withAnimation(.easeInOut(duration: 0.1)) {
-                        isPressed = false
-                    }
-                }
-        )
     }
 
     private var iconColor: Color {
@@ -114,6 +98,16 @@ struct SuggestionChip: View {
         case .contextual:
             return .purple
         }
+    }
+}
+
+// MARK: - Button Style
+/// Custom button style that doesn't interfere with scroll gestures
+struct SuggestionChipButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 
