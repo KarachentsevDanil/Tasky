@@ -79,7 +79,7 @@ struct ModernTaskCardView: View {
                     }
 
                     // Notes indicator (green dot)
-                    if task.notes != nil && !task.notes!.isEmpty {
+                    if let notes = task.notes, !notes.isEmpty {
                         Circle()
                             .fill(showDoThisFirstBadge && !task.isCompleted ? Color.white.opacity(0.6) : .green)
                             .frame(width: 5, height: 5)
@@ -198,7 +198,7 @@ struct ModernTaskCardView: View {
             label += ", due \(formatDueDate(dueDate))"
         }
 
-        if task.notes != nil && !task.notes!.isEmpty {
+        if let notes = task.notes, !notes.isEmpty {
             label += ", has notes"
         }
 
