@@ -13,6 +13,8 @@ struct QuickAddSheet: View {
     // MARK: - Properties
     @ObservedObject var viewModel: TaskListViewModel
     @Binding var isPresented: Bool
+    var onShowFullForm: (() -> Void)?
+    var preselectedDate: Date?
 
     // MARK: - State
     @State private var taskTitle = ""
@@ -84,13 +86,18 @@ struct QuickAddSheet: View {
                 if showRepeatOptions {
                     repeatOptionsView
                 }
+
+                // More options button
+                if onShowFullForm != nil {
+                    moreOptionsButton
+                }
             }
             .padding(.horizontal, Constants.Spacing.lg)
             .padding(.bottom, Constants.Spacing.lg)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
-        .presentationDetents([.height(showRepeatOptions ? 280 : 214)])
+        .presentationDetents([.height(calculateSheetHeight())])
         .presentationDragIndicator(.hidden)
         .presentationBackground(Color(.systemBackground))
         .onAppear {
@@ -293,6 +300,43 @@ struct QuickAddSheet: View {
                 repeatOptionButton(.month)
             }
         }
+    }
+
+    // MARK: - More Options Button
+    private var moreOptionsButton: some View {
+        Button {
+            HapticManager.shared.lightImpact()
+            isPresented = false
+            // Small delay to allow sheet dismissal animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                onShowFullForm?()
+            }
+        } label: {
+            HStack(spacing: Constants.Spacing.xs) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.subheadline.weight(.medium))
+                Text("More options")
+                    .font(.subheadline.weight(.medium))
+            }
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Constants.Spacing.sm)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("More options")
+        .accessibilityHint("Opens full task creation form with all options")
+    }
+
+    // MARK: - Sheet Height Calculation
+    private func calculateSheetHeight() -> CGFloat {
+        var height: CGFloat = 214 // Base height
+        if showRepeatOptions {
+            height += 66 // Repeat options section
+        }
+        if onShowFullForm != nil {
+            height += 44 // More options button
+        }
+        return height
     }
 
     // MARK: - Repeat Option Button

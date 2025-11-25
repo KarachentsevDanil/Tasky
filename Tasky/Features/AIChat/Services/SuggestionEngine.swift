@@ -136,7 +136,7 @@ class SuggestionEngine {
             // Afternoon: Generic add
             suggestions.append(Suggestion(
                 text: "Add a task",
-                prompt: "",
+                prompt: "Add task: ",
                 icon: "plus.circle",
                 type: .action
             ))

@@ -195,7 +195,13 @@ struct TodayView: View {
             }
             .navigationBarHidden(true)
             .sheet(isPresented: $showQuickAdd) {
-                QuickAddSheet(viewModel: viewModel, isPresented: $showQuickAdd)
+                QuickAddSheet(
+                    viewModel: viewModel,
+                    isPresented: $showQuickAdd,
+                    onShowFullForm: {
+                        showAddTask = true
+                    }
+                )
             }
             .navigationDestination(isPresented: $showAddTask) {
                 AddTaskView(viewModel: viewModel)
