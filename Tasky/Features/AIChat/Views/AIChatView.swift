@@ -13,15 +13,21 @@ struct AIChatView: View {
     // MARK: - Properties
     @StateObject private var viewModel: AIChatViewModel
     @StateObject private var voiceInputManager = VoiceInputManager()
+    @ObservedObject var taskListViewModel: TaskListViewModel
+    @StateObject private var timerViewModel: FocusTimerViewModel
     @State private var inputText = ""
     @State private var scrollProxy: ScrollViewProxy?
     @FocusState private var isInputFocused: Bool
     @State private var showingPermissionAlert = false
+    @State private var taskToEdit: TaskEntity?
+    @State private var showingTaskDetail = false
     @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     // MARK: - Initialization
-    init(dataService: DataService) {
+    init(dataService: DataService, taskListViewModel: TaskListViewModel) {
         _viewModel = StateObject(wrappedValue: AIChatViewModel(dataService: dataService))
+        self.taskListViewModel = taskListViewModel
+        _timerViewModel = StateObject(wrappedValue: FocusTimerViewModel(dataService: dataService))
     }
 
     // MARK: - Body
@@ -51,6 +57,17 @@ struct AIChatView: View {
                         .onChange(of: viewModel.messages.count) {
                             scrollToBottom()
                         }
+                    }
+
+                    // Suggestion chips (show when chat has only welcome message)
+                    if showSuggestions {
+                        SuggestionChipsView(
+                            suggestions: viewModel.suggestions,
+                            onSuggestionTapped: { suggestion in
+                                handleSuggestionTap(suggestion)
+                            }
+                        )
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
 
                     Divider()
@@ -97,6 +114,46 @@ struct AIChatView: View {
             } message: {
                 Text("Tasky needs access to your microphone and speech recognition to use voice input. Please enable these permissions in Settings.")
             }
+            .overlay(alignment: .bottom) {
+                VStack(spacing: Constants.Spacing.sm) {
+                    // Undo toast for AI task operations
+                    AIUndoToastView(undoManager: viewModel.undoManager)
+
+                    // Task preview card for created tasks
+                    if viewModel.showTaskPreview {
+                        TaskPreviewCard(
+                            createdTasks: viewModel.createdTasksForPreview,
+                            onEdit: { taskInfo in
+                                if let task = viewModel.getTaskForEditing(taskInfo) {
+                                    taskToEdit = task
+                                    showingTaskDetail = true
+                                }
+                                viewModel.dismissTaskPreview()
+                            },
+                            onUndo: {
+                                viewModel.undoCreatedTasks()
+                            },
+                            onDone: {
+                                viewModel.dismissTaskPreview()
+                            }
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .animation(reduceMotion ? .none : .spring(response: 0.3, dampingFraction: 0.8), value: viewModel.showTaskPreview)
+                    }
+                }
+                .padding(.bottom, Constants.Spacing.md)
+            }
+            .sheet(isPresented: $showingTaskDetail) {
+                if let task = taskToEdit {
+                    NavigationStack {
+                        TaskDetailView(
+                            viewModel: taskListViewModel,
+                            timerViewModel: timerViewModel,
+                            task: task
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -108,47 +165,69 @@ struct AIChatView: View {
                 recordingIndicator
             }
 
-            HStack(spacing: 12) {
-                // Voice input button
-                Button {
-                    toggleVoiceInput()
-                } label: {
-                    Image(systemName: voiceInputManager.isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                        .font(.system(size: 28))
-                        .foregroundStyle(voiceInputManager.isRecording ? .red : .blue)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
-                }
-                .disabled(!viewModel.isAvailable)
-
-                TextField("Ask me to create tasks...", text: $inputText, axis: .vertical)
+            HStack(spacing: 8) {
+                // Text field (matching QuickAddSheet style)
+                TextField("Add a task...", text: $inputText)
                     .textFieldStyle(.plain)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Color(.systemGray6))
-                    )
                     .focused($isInputFocused)
-                    .lineLimit(1...5)
+                    .submitLabel(.send)
+                    .onSubmit {
+                        if canSend { sendMessage() }
+                    }
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
+                    .background(Color(.systemGray6))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                     .onChange(of: voiceInputManager.transcribedText) { oldValue, newValue in
                         if !newValue.isEmpty && oldValue != newValue {
                             inputText = newValue
                         }
                     }
 
+                // Voice button (purple gradient - matching QuickAddSheet)
+                Button {
+                    toggleVoiceInput()
+                } label: {
+                    Image(systemName: voiceInputManager.isRecording ? "waveform" : "mic.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.4, green: 0.5, blue: 0.95),
+                                    Color(red: 0.5, green: 0.4, blue: 0.9)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!viewModel.isAvailable)
+                .accessibilityLabel(voiceInputManager.isRecording ? "Stop recording" : "Voice input")
+                .accessibilityHint(voiceInputManager.isRecording ? "Tap to stop recording" : "Tap to dictate your task")
+
+                // Send button (blue circle - matching QuickAddSheet)
                 Button {
                     sendMessage()
                 } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(canSend ? .blue : .gray)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Color.blue)
+                        .clipShape(Circle())
                 }
+                .buttonStyle(.plain)
                 .disabled(!canSend)
+                .opacity(canSend ? 1.0 : 0.5)
+                .accessibilityLabel("Send message")
+                .accessibilityHint("Tap to send your message")
             }
-            .padding()
+            .padding(.horizontal, Constants.Spacing.lg)
+            .padding(.vertical, Constants.Spacing.md)
         }
         .background(Color(.systemBackground))
     }
@@ -208,6 +287,11 @@ struct AIChatView: View {
         !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.isLoading
     }
 
+    /// Show suggestions only when chat has just the welcome message
+    private var showSuggestions: Bool {
+        viewModel.messages.count <= 1 && !viewModel.suggestions.isEmpty && !viewModel.isLoading
+    }
+
     // MARK: - Methods
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -261,81 +345,27 @@ struct AIChatView: View {
             scrollProxy?.scrollTo(lastMessage.id, anchor: .bottom)
         }
     }
-}
 
-// MARK: - Message Bubble
-struct MessageBubble: View {
-    let message: ChatMessage
+    private func handleSuggestionTap(_ suggestion: SuggestionEngine.Suggestion) {
+        HapticManager.shared.lightImpact()
 
-    var body: some View {
-        HStack {
-            if message.role == .user {
-                Spacer(minLength: 60)
-            }
-
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
-                Text(message.content)
-                    .font(.body)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(message.role == .user ? Color.blue : Color(.systemGray5))
-                    )
-                    .foregroundStyle(message.role == .user ? .white : .primary)
-
-                Text(message.timestamp, style: .time)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-            }
-
-            if message.role == .assistant {
-                Spacer(minLength: 60)
-            }
-        }
-    }
-}
-
-// MARK: - Typing Indicator
-struct TypingIndicator: View {
-    @State private var animationPhase = 0
-    @Environment(\.accessibilityReduceMotion) var reduceMotion
-
-    var body: some View {
-        HStack {
-            HStack(spacing: 6) {
-                ForEach(0..<3) { index in
-                    Circle()
-                        .fill(Color.gray)
-                        .frame(width: 8, height: 8)
-                        .opacity(animationPhase == index ? 1.0 : 0.3)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(Color(.systemGray5))
-            )
-
-            Spacer()
-        }
-        .onAppear {
-            startAnimation()
-        }
-    }
-
-    private func startAnimation() {
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-            withAnimation(reduceMotion ? .none : .default) {
-                animationPhase = (animationPhase + 1) % 3
-            }
+        switch suggestion.type {
+        case .query, .contextual:
+            // For queries and contextual suggestions, send the prompt directly
+            viewModel.sendMessage(suggestion.prompt)
+        case .action:
+            // For actions, put the prompt in the text field for user to complete
+            inputText = suggestion.prompt
+            isInputFocused = true
         }
     }
 }
 
 // MARK: - Preview
 #Preview {
-    AIChatView(dataService: DataService(persistenceController: .preview))
+    let dataService = DataService(persistenceController: .preview)
+    AIChatView(
+        dataService: dataService,
+        taskListViewModel: TaskListViewModel(dataService: dataService)
+    )
 }
