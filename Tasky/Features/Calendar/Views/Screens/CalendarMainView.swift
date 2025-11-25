@@ -17,6 +17,7 @@ struct CalendarMainView: View {
     @State private var showQuickAdd = false
     @State private var showFullAddTask = false
     @State private var selectedView: ViewMode = .day
+    @State private var undoAction: CalendarUndoAction?
     @Environment(\.colorScheme) private var colorScheme
 
     // MARK: - Initialization
@@ -85,6 +86,28 @@ struct CalendarMainView: View {
                 viewModel.currentFilter = .all
                 await viewModel.loadTasks()
             }
+            .undoToast(
+                isPresented: Binding(
+                    get: { undoAction != nil },
+                    set: { if !$0 { undoAction = nil } }
+                ),
+                icon: undoAction?.icon ?? "trash",
+                message: undoAction?.message ?? "",
+                onUndo: {
+                    let actionToUndo = undoAction
+                    Task {
+                        switch actionToUndo {
+                        case .deletion:
+                            await viewModel.undoDelete()
+                        case .completion:
+                            await viewModel.undoCompletion()
+                        case .none:
+                            break
+                        }
+                        HapticManager.shared.lightImpact()
+                    }
+                }
+            )
         }
     }
 
@@ -150,7 +173,8 @@ struct CalendarMainView: View {
                     selectedDate: selectedDate,
                     tasks: tasksForDate(selectedDate),
                     viewModel: viewModel,
-                    timerViewModel: timerViewModel
+                    timerViewModel: timerViewModel,
+                    undoAction: $undoAction
                 )
                 .padding(.bottom, Constants.Spacing.xxxl)
             }

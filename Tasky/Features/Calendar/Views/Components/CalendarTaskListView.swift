@@ -7,12 +7,33 @@
 
 import SwiftUI
 
+/// Undo action type for task operations
+enum CalendarUndoAction {
+    case deletion
+    case completion
+
+    var message: String {
+        switch self {
+        case .deletion: return "Task deleted"
+        case .completion: return "Task completed"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .deletion: return "trash"
+        case .completion: return "checkmark.circle.fill"
+        }
+    }
+}
+
 /// Polished task list view for the calendar with contextual headers
 struct CalendarTaskListView: View {
     let selectedDate: Date
     let tasks: [TaskEntity]
     @ObservedObject var viewModel: TaskListViewModel
     @ObservedObject var timerViewModel: FocusTimerViewModel
+    @Binding var undoAction: CalendarUndoAction?
 
     @State private var showCompletedTasks = false
     @State private var selectedTaskForDetail: TaskEntity?
@@ -167,12 +188,14 @@ struct CalendarTaskListView: View {
                 Task {
                     await viewModel.toggleTaskCompletion(task)
                     HapticManager.shared.success()
+                    undoAction = .completion
                 }
             },
             onDelete: {
                 Task {
                     await viewModel.deleteTask(task)
                     HapticManager.shared.mediumImpact()
+                    undoAction = .deletion
                 }
             }
         ) {
@@ -182,6 +205,7 @@ struct CalendarTaskListView: View {
                     Task {
                         await viewModel.toggleTaskCompletion(task)
                         HapticManager.shared.success()
+                        undoAction = .completion
                     }
                 },
                 showDoThisFirstBadge: false,
@@ -212,6 +236,9 @@ struct CalendarTaskListView: View {
             Task {
                 await viewModel.toggleTaskCompletion(task)
                 HapticManager.shared.success()
+                if !task.isCompleted {
+                    undoAction = .completion
+                }
             }
         } label: {
             Label(
@@ -226,6 +253,7 @@ struct CalendarTaskListView: View {
             Task {
                 await viewModel.deleteTask(task)
                 HapticManager.shared.mediumImpact()
+                undoAction = .deletion
             }
         } label: {
             Label("Delete", systemImage: "trash")
@@ -376,7 +404,8 @@ struct CalendarTaskListView: View {
             selectedDate: Date(),
             tasks: [],
             viewModel: TaskListViewModel(dataService: DataService(persistenceController: .preview)),
-            timerViewModel: FocusTimerViewModel()
+            timerViewModel: FocusTimerViewModel(),
+            undoAction: .constant(nil)
         )
     }
     .background(Color(.systemGroupedBackground))
@@ -388,7 +417,8 @@ struct CalendarTaskListView: View {
             selectedDate: Calendar.current.date(byAdding: .day, value: 1, to: Date())!,
             tasks: [],
             viewModel: TaskListViewModel(dataService: DataService(persistenceController: .preview)),
-            timerViewModel: FocusTimerViewModel()
+            timerViewModel: FocusTimerViewModel(),
+            undoAction: .constant(nil)
         )
     }
     .background(Color(.systemGroupedBackground))
@@ -400,7 +430,8 @@ struct CalendarTaskListView: View {
             selectedDate: Calendar.current.date(byAdding: .day, value: -3, to: Date())!,
             tasks: [],
             viewModel: TaskListViewModel(dataService: DataService(persistenceController: .preview)),
-            timerViewModel: FocusTimerViewModel()
+            timerViewModel: FocusTimerViewModel(),
+            undoAction: .constant(nil)
         )
     }
     .background(Color(.systemGroupedBackground))
