@@ -20,8 +20,10 @@ struct QuickAddSheet: View {
     @State private var selectedPriority: Constants.TaskPriority = .none
     @State private var showRepeatOptions = false
     @State private var selectedRepeatOption: RepeatOption = .none
+    @State private var voiceInputError: String?
     @FocusState private var isFocused: Bool
     @StateObject private var voiceManager = VoiceInputManager()
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     enum QuickDate: String, CaseIterable {
         case today = "Today"
@@ -87,10 +89,10 @@ struct QuickAddSheet: View {
             .padding(.bottom, Constants.Spacing.lg)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .presentationDetents([.height(showRepeatOptions ? 280 : 214)])
         .presentationDragIndicator(.hidden)
-        .presentationBackground(Color.white)
+        .presentationBackground(Color(.systemBackground))
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 isFocused = true
@@ -99,6 +101,15 @@ struct QuickAddSheet: View {
         .onChange(of: voiceManager.transcribedText) { _, newValue in
             if !newValue.isEmpty {
                 taskTitle = newValue
+            }
+        }
+        .alert("Voice Input Error", isPresented: .constant(voiceInputError != nil)) {
+            Button("OK") {
+                voiceInputError = nil
+            }
+        } message: {
+            if let error = voiceInputError {
+                Text(error)
             }
         }
     }
@@ -137,6 +148,8 @@ struct QuickAddSheet: View {
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(voiceManager.isRecording ? "Stop recording" : "Voice input")
+            .accessibilityHint(voiceManager.isRecording ? "Tap to stop recording" : "Tap to dictate your task")
 
             // Send button
             Button {
@@ -152,6 +165,8 @@ struct QuickAddSheet: View {
             .buttonStyle(.plain)
             .disabled(taskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .opacity(taskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
+            .accessibilityLabel("Add task")
+            .accessibilityHint("Tap to create this task")
         }
     }
 
@@ -185,7 +200,7 @@ struct QuickAddSheet: View {
                     label: "Repeat",
                     isSelected: showRepeatOptions
                 ) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    withAnimation(reduceMotion ? .none : .spring(response: 0.3, dampingFraction: 0.7)) {
                         showRepeatOptions.toggle()
                     }
                     HapticManager.shared.selectionChanged()
@@ -313,7 +328,13 @@ struct QuickAddSheet: View {
                     do {
                         try await voiceManager.startRecording()
                     } catch {
-                        print("Failed to start recording: \(error)")
+                        await MainActor.run {
+                            voiceInputError = "Unable to start voice input. Please check your microphone permissions in Settings."
+                        }
+                    }
+                } else {
+                    await MainActor.run {
+                        voiceInputError = "Voice input requires microphone and speech recognition permissions. Please enable them in Settings."
                     }
                 }
             }
