@@ -42,7 +42,14 @@ struct FloatingActionButton: View {
 // MARK: - View Extension for Easy Placement
 extension View {
     /// Add a floating action button to the view
+    /// - Parameters:
+    ///   - isVisible: Whether the FAB should be visible (default: true)
+    ///   - icon: SF Symbol name for the button icon
+    ///   - color: Background color of the button
+    ///   - action: Action to perform when tapped
+    @ViewBuilder
     func floatingActionButton(
+        isVisible: Bool = true,
         icon: String = "plus",
         color: Color = .blue,
         action: @escaping () -> Void
@@ -50,10 +57,14 @@ extension View {
         ZStack(alignment: .bottomTrailing) {
             self
 
-            FloatingActionButton(icon: icon, action: action, color: color)
-                .padding(.trailing, Constants.Spacing.lg)
-                .padding(.bottom, Constants.Spacing.lg)
+            if isVisible {
+                FloatingActionButton(icon: icon, action: action, color: color)
+                    .padding(.trailing, Constants.Spacing.lg)
+                    .padding(.bottom, Constants.Spacing.lg)
+                    .transition(.scale.combined(with: .opacity))
+            }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isVisible)
     }
 }
 

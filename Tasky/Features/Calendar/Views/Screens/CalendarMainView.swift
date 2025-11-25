@@ -56,7 +56,7 @@ struct CalendarMainView: View {
                 }
             }
             .background(Color(.systemGroupedBackground))
-            .floatingActionButton {
+            .floatingActionButton(isVisible: selectedView == .upcoming) {
                 showQuickAdd = true
             }
             .navigationTitle("Calendar")
