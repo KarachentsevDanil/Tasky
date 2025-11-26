@@ -290,6 +290,8 @@ struct QuickAddCardView: View {
             return .red
         case .list:
             return .purple
+        case .recurrence:
+            return .teal
         }
     }
 

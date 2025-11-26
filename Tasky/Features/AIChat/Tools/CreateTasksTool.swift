@@ -49,8 +49,9 @@ struct CreateTasksTool: Tool {
             @Guide(description: "Optional scheduled end time in ISO 8601 format")
             let scheduledEndTime: String?
 
-            @Guide(description: "Priority level: 0 (none), 1 (low), 2 (medium), 3 (high)")
-            let priority: Int?
+            @Guide(description: "Priority level")
+            @Guide(.anyOf(["none", "low", "medium", "high"]))
+            let priority: String?
 
             @Guide(description: "Whether this is a recurring task")
             let isRecurring: Bool?
@@ -130,8 +131,14 @@ struct CreateTasksTool: Tool {
                 print("  - List: \(matchedList?.name ?? "Inbox")")
                 print("  - Estimated duration: \(estimatedDuration) min")
 
-                // Validate priority
-                let priority = Int16(min(max(taskData.priority ?? 0, 0), 3))
+                // Parse priority from string
+                let priority: Int16
+                switch taskData.priority?.lowercased() {
+                case "high": priority = 3
+                case "medium": priority = 2
+                case "low": priority = 1
+                default: priority = 0  // "none" or nil
+                }
 
                 // Create the task
                 let createdTask = try dataService.createTask(

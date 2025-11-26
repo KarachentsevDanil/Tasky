@@ -8,65 +8,53 @@
 import SwiftUI
 internal import CoreData
 
-/// Circular progress ring with animated glow and timer display
+/// Circular progress ring with timer display
 struct FocusTimerProgressRing: View {
     @ObservedObject var viewModel: FocusTimerViewModel
     let timerColor: Color
     @Environment(\.accessibilityReduceMotion) var reduceMotion
 
+    private let ringSize: CGFloat = 260
+    private let ringWidth: CGFloat = 14
+
     var body: some View {
         ZStack {
-            // Pulsing outer glow (only when running)
-            if viewModel.timerState == .running {
-                Circle()
-                    .stroke(timerColor.opacity(0.2), lineWidth: 24)
-                    .blur(radius: 12)
-                    .scaleEffect(1.05)
-                    .opacity(viewModel.timerState == .running ? 1 : 0)
-                    .animation(
-                        reduceMotion ? .none : .easeInOut(duration: 2)
-                            .repeatForever(autoreverses: true),
-                        value: viewModel.timerState
-                    )
-            }
-
             // Background ring
             Circle()
                 .stroke(
                     Color(.systemGray5),
-                    style: StrokeStyle(lineWidth: 20, lineCap: .round)
+                    style: StrokeStyle(lineWidth: ringWidth, lineCap: .round)
                 )
 
-            // Progress ring with enhanced shadow
+            // Progress ring with gradient
             Circle()
                 .trim(from: 0, to: viewModel.progress)
                 .stroke(
-                    LinearGradient(
-                        colors: [timerColor, timerColor.opacity(0.85)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                    AngularGradient(
+                        colors: [timerColor.opacity(0.7), timerColor],
+                        center: .center,
+                        startAngle: .degrees(-90),
+                        endAngle: .degrees(-90 + 360 * viewModel.progress)
                     ),
-                    style: StrokeStyle(lineWidth: 20, lineCap: .round)
+                    style: StrokeStyle(lineWidth: ringWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: timerColor.opacity(0.4), radius: 10, x: 0, y: 6)
+                .shadow(color: timerColor.opacity(0.25), radius: 6, x: 0, y: 3)
                 .animation(reduceMotion ? .none : .linear(duration: 1), value: viewModel.progress)
 
             // Inner content
-            VStack(spacing: 12) {
-                // Timer text with scale animation
+            VStack(spacing: 8) {
+                // Timer text
                 Text(viewModel.formattedTime)
-                    .font(.system(size: 76, weight: .bold, design: .rounded))
+                    .font(.system(size: 58, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [timerColor, timerColor.opacity(0.75)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .scaleEffect(viewModel.timerState == .running ? 1.0 : 0.95)
-                    .animation(reduceMotion ? .none : .spring(response: 0.3), value: viewModel.timerState)
+                    .foregroundColor(timerColor)
+
+                // Total duration context
+                Text("of \(viewModel.totalDurationFormatted)")
+                    .font(.subheadline.weight(.medium))
+                    .monospacedDigit()
+                    .foregroundColor(Color(.secondaryLabel))
 
                 // State indicator
                 if viewModel.timerState == .paused {
@@ -77,14 +65,14 @@ struct FocusTimerProgressRing: View {
 
                         Text("Paused")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(Color(.secondaryLabel))
                     }
                     .transition(.opacity.combined(with: .scale))
                 }
             }
         }
-        .frame(width: 320, height: 320)
-        .padding(.vertical, 16)
+        .frame(width: ringSize, height: ringSize)
+        .padding(.vertical, 20)
     }
 }
 

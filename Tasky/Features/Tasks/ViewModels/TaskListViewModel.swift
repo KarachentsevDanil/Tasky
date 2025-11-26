@@ -155,14 +155,18 @@ class TaskListViewModel: ObservableObject {
         }
     }
 
-    /// Update a task
+    /// Update a task with all editable fields
     func updateTask(
         _ task: TaskEntity,
         title: String? = nil,
         notes: String? = nil,
         dueDate: Date? = nil,
+        scheduledTime: Date? = nil,
+        scheduledEndTime: Date? = nil,
         priority: Int16? = nil,
-        list: TaskListEntity? = nil
+        list: TaskListEntity? = nil,
+        isRecurring: Bool? = nil,
+        recurrenceDays: [Int]? = nil
     ) async {
         do {
             try dataService.updateTask(
@@ -170,9 +174,25 @@ class TaskListViewModel: ObservableObject {
                 title: title,
                 notes: notes,
                 dueDate: dueDate,
+                scheduledTime: scheduledTime,
+                scheduledEndTime: scheduledEndTime,
                 priority: priority,
                 list: list
             )
+
+            // Update recurrence fields directly on task
+            if let isRecurring {
+                task.isRecurring = isRecurring
+            }
+            if let recurrenceDays {
+                // Convert array to comma-separated string
+                if recurrenceDays.isEmpty {
+                    task.recurrenceDays = nil
+                } else {
+                    task.recurrenceDays = recurrenceDays.sorted().map { String($0) }.joined(separator: ",")
+                }
+            }
+
             await loadTasks()
         } catch {
             handleError(error)

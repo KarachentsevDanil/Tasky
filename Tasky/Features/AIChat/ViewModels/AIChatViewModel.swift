@@ -21,7 +21,7 @@ class AIChatViewModel: ObservableObject {
     @Published var isTyping = false
     @Published var errorMessage: String?
     @Published var showError = false
-    @Published var isAvailable = false
+    @Published var isAvailable: Bool? = nil  // nil = checking, true = available, false = unavailable
     @Published var suggestions: [SuggestionEngine.Suggestion] = []
     @Published var createdTasksForPreview: [CreatedTaskInfo] = []
     @Published var showTaskPreview = false
@@ -42,6 +42,10 @@ class AIChatViewModel: ObservableObject {
     private let tokenLimit = 3500
     /// Cached system prompt for token calculation
     private var systemPromptCache: String = ""
+    /// Timer for auto-dismissing task preview card
+    private var previewDismissTimer: Timer?
+    /// Duration before task preview auto-dismisses
+    private let previewDismissDuration: TimeInterval = 5.0
 
     /// User preference for showing task preview (read from AppStorage)
     @AppStorage("aiTaskPreview") private var aiTaskPreviewEnabled = true
@@ -95,6 +99,42 @@ class AIChatViewModel: ObservableObject {
                 self?.handleTaskDeleted(notification)
             }
             .store(in: &cancellables)
+
+        // Bulk operations notifications
+        NotificationCenter.default.publisher(for: .aiBulkTasksCompleted)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.handleBulkOperation()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .aiBulkTasksRescheduled)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.handleBulkOperation()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .aiBulkTasksDeleted)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.handleBulkOperation()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .aiBulkTasksUpdated)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.handleBulkOperation()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func handleBulkOperation() {
+        // Reload suggestions after bulk operations
+        Task {
+            await loadSuggestions()
+        }
     }
 
     private func handleTasksCreated(_ notification: Notification) {
@@ -107,6 +147,20 @@ class AIChatViewModel: ObservableObject {
         if aiTaskPreviewEnabled {
             createdTasksForPreview = tasks
             showTaskPreview = true
+            startPreviewDismissTimer()
+        }
+    }
+
+    /// Start auto-dismiss timer for task preview card
+    private func startPreviewDismissTimer() {
+        // Cancel any existing timer
+        previewDismissTimer?.invalidate()
+
+        // Set 5-second auto-dismiss timer
+        previewDismissTimer = Timer.scheduledTimer(withTimeInterval: previewDismissDuration, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.dismissTaskPreview()
+            }
         }
     }
 
@@ -184,6 +238,8 @@ class AIChatViewModel: ObservableObject {
 
     /// Dismiss the task preview card
     func dismissTaskPreview() {
+        previewDismissTimer?.invalidate()
+        previewDismissTimer = nil
         showTaskPreview = false
         createdTasksForPreview = []
     }
@@ -273,26 +329,23 @@ class AIChatViewModel: ObservableObject {
         session = LanguageModelSession(
             model: SystemLanguageModel.default,
             tools: [
-                // Core task tools
+                // Core task creation
                 CreateTasksTool(dataService: dataService),
-                QueryTasksTool(dataService: dataService),
-                CompleteTaskTool(dataService: dataService),
-                UpdateTaskTool(dataService: dataService),
-                RescheduleTaskTool(dataService: dataService),
-                DeleteTaskTool(dataService: dataService),
-                // Organization tools
-                ManageListTool(dataService: dataService),
-                // Productivity tools
-                TaskAnalyticsTool(dataService: dataService),
-                FocusSessionTool(dataService: dataService),
-                // Help tool
-                ListActionsTool()
+                // Task operation tools
+                CompleteTasksTool(dataService: dataService),
+                RescheduleTasksTool(dataService: dataService),
+                DeleteTasksTool(dataService: dataService),
+                UpdateTasksTool(dataService: dataService),
+                // Smart operation tools
+                PlanMyDayTool(dataService: dataService),
+                CleanupTool(dataService: dataService),
+                WeeklyReviewTool(dataService: dataService)
             ],
             instructions: systemPromptCache
         )
 
         // Initialize token count with system prompt + tool definitions (~50 tokens per tool)
-        estimatedTokenCount = estimateTokens(systemPromptCache) + (10 * 50)
+        estimatedTokenCount = estimateTokens(systemPromptCache) + (8 * 50)
 
         // Prewarm session for faster first response
         session?.prewarm()
@@ -302,16 +355,24 @@ class AIChatViewModel: ObservableObject {
     /// Condensed to ~100 tokens per Apple Foundation Models recommendations
     private func buildSystemPrompt(todayDate: String, lists: String) -> String {
         """
-        Role: Task assistant for Tasky.
+        Role: Tasky bulk operations assistant.
         Today: \(todayDate)
         Lists: \(lists)
 
         Rules:
-        - Use tools for all actions, never describe
-        - Default: priority=medium, list=Inbox, dueDate=today
-        - Dates: ISO 8601 (YYYY-MM-DDTHH:MM:SSZ)
+        - Single task = filter with taskNames:["name"]
+        - Default: dueDate=today, list=Inbox
         - Keep responses under 2 sentences
-        - Match tasks by partial title
+
+        Tool selection:
+        - add/create/remind → createTasks
+        - done/complete/finished → completeTasks
+        - move/postpone/reschedule → rescheduleTasks
+        - delete/remove → deleteTasks
+        - priority/move to list → updateTasks
+        - plan my day → planMyDay
+        - clean up/tidy/fix overdue → cleanup
+        - weekly review/summary → weeklyReview
         """
     }
 
@@ -330,7 +391,7 @@ class AIChatViewModel: ObservableObject {
         let welcomeMessage = ChatMessage(
             id: UUID(),
             role: .assistant,
-            content: "Hi! I'm your AI task assistant. I can help you:\n\n• Create, complete, reschedule, or delete tasks\n• Check what's due and view your progress\n• Manage lists and start focus sessions\n\nTry: \"What's due today?\" or \"Done with groceries\"",
+            content: "Hi! I'm your AI task assistant. I excel at bulk operations:\n\n• Add multiple tasks at once\n• Complete/reschedule all tasks in a list\n• Plan your day or do weekly reviews\n• Clean up overdue tasks\n\nTry: \"Add: milk, eggs, bread\" or \"Plan my day\"",
             timestamp: Date()
         )
         messages.append(welcomeMessage)

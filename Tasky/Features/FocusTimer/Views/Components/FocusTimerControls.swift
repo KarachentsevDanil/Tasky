@@ -8,7 +8,7 @@
 import SwiftUI
 internal import CoreData
 
-/// Timer control buttons (play/pause, stop, skip)
+/// Timer control buttons (play/pause, stop, skip, extend)
 struct FocusTimerControls: View {
     let task: TaskEntity
     @ObservedObject var viewModel: FocusTimerViewModel
@@ -17,147 +17,189 @@ struct FocusTimerControls: View {
     @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     var body: some View {
-        HStack(spacing: 28) {
-            // Stop Button (smaller, secondary)
-            if viewModel.timerState != .idle {
-                Button {
-                    viewModel.stopTimer()
-                    onDismiss()
-                } label: {
-                    VStack(spacing: 8) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(.systemGray6))
-                                .frame(width: 64, height: 64)
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color(.systemGray4), lineWidth: 1)
-                                )
-
-                            Image(systemName: "stop.fill")
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundStyle(.red)
-                        }
-                        .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
-
-                        Text("Stop")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .transition(.asymmetric(
-                    insertion: .scale.combined(with: .opacity),
-                    removal: .scale.combined(with: .opacity)
-                ))
-            }
-
-            // Play/Pause Button (large, primary)
-            Button {
-                switch viewModel.timerState {
-                case .idle, .completed:
-                    viewModel.startTimer(for: task)
-                case .running:
-                    viewModel.pauseTimer()
-                case .paused:
-                    viewModel.resumeTimer()
-                }
-            } label: {
-                VStack(spacing: 12) {
-                    ZStack {
-                        // Animated glow layer
-                        Circle()
-                            .fill(timerColor)
-                            .frame(width: 96, height: 96)
-                            .blur(radius: 24)
-                            .opacity(viewModel.timerState == .running ? 0.7 : 0.5)
-                            .scaleEffect(viewModel.timerState == .running ? 1.1 : 1.0)
-                            .animation(
-                                reduceMotion ? .none : (viewModel.timerState == .running ?
-                                    .easeInOut(duration: 1.5).repeatForever(autoreverses: true) :
-                                    .easeInOut(duration: 0.3)),
-                                value: viewModel.timerState
-                            )
-
-                        // Main button with gradient
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        timerColor,
-                                        timerColor.opacity(0.85)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 96, height: 96)
-                            .overlay(
+        VStack(spacing: 20) {
+            // Main control buttons
+            HStack(spacing: 28) {
+                // Stop Button (smaller, secondary)
+                if viewModel.timerState != .idle {
+                    Button {
+                        viewModel.requestStop()
+                    } label: {
+                        VStack(spacing: 8) {
+                            ZStack {
                                 Circle()
-                                    .stroke(
-                                        LinearGradient(
-                                            colors: [
-                                                .white.opacity(0.3),
-                                                .clear
-                                            ],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        ),
-                                        lineWidth: 2
+                                    .fill(Color(.systemGray6))
+                                    .frame(width: 64, height: 64)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color(.systemGray4), lineWidth: 1)
                                     )
-                            )
-                            .shadow(color: timerColor.opacity(0.4), radius: 16, y: 8)
 
-                        // Icon with animation
-                        Image(systemName: playPauseIcon)
-                            .font(.system(size: 40, weight: .bold))
-                            .foregroundStyle(.white)
-                            .scaleEffect(viewModel.timerState == .running ? 1.0 : 1.1)
-                            .animation(reduceMotion ? .none : .spring(response: 0.3), value: viewModel.timerState)
+                                Image(systemName: "stop.fill")
+                                    .font(.system(size: 22, weight: .bold))
+                                    .foregroundStyle(.red)
+                            }
+                            .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
+
+                            Text("Stop")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
                     }
-
-                    Text(playPauseLabel)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(timerColor)
+                    .buttonStyle(.plain)
+                    .transition(.asymmetric(
+                        insertion: .scale.combined(with: .opacity),
+                        removal: .scale.combined(with: .opacity)
+                    ))
                 }
-            }
-            .buttonStyle(.plain)
 
-            // Skip Break Button (smaller, secondary)
-            if viewModel.isBreak {
+                // Play/Pause Button (large, primary)
                 Button {
-                    viewModel.resetTimer()
-                    onDismiss()
+                    switch viewModel.timerState {
+                    case .idle, .completed:
+                        viewModel.startTimer(for: task)
+                    case .running:
+                        viewModel.pauseTimer()
+                    case .paused:
+                        viewModel.resumeTimer()
+                    }
                 } label: {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 12) {
                         ZStack {
+                            // Animated glow layer
                             Circle()
-                                .fill(Color(.systemGray6))
-                                .frame(width: 64, height: 64)
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color(.systemGray4), lineWidth: 1)
+                                .fill(timerColor)
+                                .frame(width: 96, height: 96)
+                                .blur(radius: 24)
+                                .opacity(viewModel.timerState == .running ? 0.7 : 0.5)
+                                .scaleEffect(viewModel.timerState == .running ? 1.1 : 1.0)
+                                .animation(
+                                    reduceMotion ? .none : (viewModel.timerState == .running ?
+                                        .easeInOut(duration: 1.5).repeatForever(autoreverses: true) :
+                                        .easeInOut(duration: 0.3)),
+                                    value: viewModel.timerState
                                 )
 
-                            Image(systemName: "forward.fill")
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundStyle(.orange)
-                        }
-                        .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
+                            // Main button with gradient
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            timerColor,
+                                            timerColor.opacity(0.85)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 96, height: 96)
+                                .overlay(
+                                    Circle()
+                                        .stroke(
+                                            LinearGradient(
+                                                colors: [
+                                                    .white.opacity(0.3),
+                                                    .clear
+                                                ],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            ),
+                                            lineWidth: 2
+                                        )
+                                )
+                                .shadow(color: timerColor.opacity(0.4), radius: 16, y: 8)
 
-                        Text("Skip")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            // Icon with animation
+                            Image(systemName: playPauseIcon)
+                                .font(.system(size: 40, weight: .bold))
+                                .foregroundStyle(.white)
+                                .scaleEffect(viewModel.timerState == .running ? 1.0 : 1.1)
+                                .animation(reduceMotion ? .none : .spring(response: 0.3), value: viewModel.timerState)
+                        }
+
+                        Text(playPauseLabel)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(timerColor)
                     }
                 }
                 .buttonStyle(.plain)
-                .transition(.asymmetric(
-                    insertion: .scale.combined(with: .opacity),
-                    removal: .scale.combined(with: .opacity)
-                ))
+
+                // Skip Break Button (smaller, secondary)
+                if viewModel.isBreak {
+                    Button {
+                        viewModel.resetTimer()
+                        onDismiss()
+                    } label: {
+                        VStack(spacing: 8) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(.systemGray6))
+                                    .frame(width: 64, height: 64)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color(.systemGray4), lineWidth: 1)
+                                    )
+
+                                Image(systemName: "forward.fill")
+                                    .font(.system(size: 22, weight: .bold))
+                                    .foregroundStyle(.orange)
+                            }
+                            .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
+
+                            Text("Skip")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.asymmetric(
+                        insertion: .scale.combined(with: .opacity),
+                        removal: .scale.combined(with: .opacity)
+                    ))
+                }
+            }
+
+            // Extend time button (only when timer is active)
+            if viewModel.timerState == .running || viewModel.timerState == .paused {
+                Button {
+                    viewModel.extendTime(by: 5)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.subheadline)
+
+                        Text("Add 5 min")
+                            .font(.subheadline.weight(.medium))
+                    }
+                    .foregroundStyle(timerColor)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        Capsule()
+                            .fill(timerColor.opacity(0.12))
+                    )
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .padding(.vertical, 8)
+        .confirmationDialog(
+            "Stop Session?",
+            isPresented: $viewModel.showStopConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Stop & Save Progress", role: .destructive) {
+                viewModel.confirmStop()
+                onDismiss()
+            }
+
+            Button("Cancel", role: .cancel) {
+                viewModel.cancelStop()
+            }
+        } message: {
+            Text("Your progress will be saved. You can always start a new session.")
+        }
     }
 
     // MARK: - Computed Properties

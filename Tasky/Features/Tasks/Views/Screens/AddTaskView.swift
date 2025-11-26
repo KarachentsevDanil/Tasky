@@ -3,271 +3,416 @@
 //  Tasky
 //
 //  Created by Danylo Karachentsev on 01.11.2025.
+//  Redesigned with Things 3 style on 26.11.2025.
 //
 
 import SwiftUI
 
-/// View for adding a new task
+/// Things 3 inspired task creation view with inline expandable options
 struct AddTaskView: View {
 
     // MARK: - Environment
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var viewModel: TaskListViewModel
 
     // MARK: - Properties
     let preselectedScheduledTime: Date?
     let preselectedScheduledEndTime: Date?
 
-    // MARK: - State
+    // MARK: - State - Core
     @State private var title = ""
     @State private var notes = ""
-    @State private var hasDueDate = true  // Default to today for easier task creation
-    @State private var dueDate = Date()
-    @State private var hasScheduledTime = false
-    @State private var scheduledTime = Date()
-    @State private var scheduledEndTime = Date()
+    @FocusState private var isTitleFocused: Bool
+    @FocusState private var isNotesFocused: Bool
+
+    // MARK: - State - Date & Time
+    @State private var dueDate: Date? = Date()
+    @State private var scheduledStartTime: Date?
+    @State private var scheduledEndTime: Date?
+
+    // MARK: - State - Options
     @State private var priority: Constants.TaskPriority = .none
     @State private var selectedList: TaskListEntity?
     @State private var isRecurring = false
     @State private var selectedDays: Set<Int> = []
+    @State private var recurrenceFrequency: WeekdaySelector.RecurrenceFrequency = .weekly
+
+    // MARK: - State - Expansion
+    @State private var isNotesExpanded = false
+    @State private var isDateExpanded = false
+    @State private var isTimeExpanded = false
+    @State private var isRepeatExpanded = false
+    @State private var isPriorityExpanded = false
+    @State private var isListExpanded = false
+    @State private var showDateCalendar = false
+
+    // MARK: - Computed Properties
+    private var canAdd: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var animation: Animation? {
+        reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)
+    }
 
     // MARK: - Initialization
     init(viewModel: TaskListViewModel, preselectedScheduledTime: Date? = nil, preselectedScheduledEndTime: Date? = nil) {
         self.viewModel = viewModel
         self.preselectedScheduledTime = preselectedScheduledTime
         self.preselectedScheduledEndTime = preselectedScheduledEndTime
-        _hasScheduledTime = State(initialValue: preselectedScheduledTime != nil)
+
         if let preselectedTime = preselectedScheduledTime {
-            _scheduledTime = State(initialValue: preselectedTime)
-            // Set dueDate to match the scheduled time's date
+            _scheduledStartTime = State(initialValue: preselectedTime)
             let calendar = Calendar.current
             _dueDate = State(initialValue: calendar.startOfDay(for: preselectedTime))
-            // Use preselected end time if provided, otherwise default to 1 hour after start time
             if let preselectedEnd = preselectedScheduledEndTime {
                 _scheduledEndTime = State(initialValue: preselectedEnd)
             } else {
-                _scheduledEndTime = State(initialValue: calendar.date(byAdding: .hour, value: 1, to: preselectedTime) ?? preselectedTime)
+                _scheduledEndTime = State(initialValue: calendar.date(byAdding: .hour, value: 1, to: preselectedTime))
             }
+            _isTimeExpanded = State(initialValue: true)
         }
     }
 
     // MARK: - Body
     var body: some View {
-        NavigationStack {
-            Form {
-                // Title Section
-                Section {
-                    TextField("Task title", text: $title)
-                        .textInputAutocapitalization(.sentences)
-                        .submitLabel(.done)
-                } header: {
-                    Text("Title")
-                }
+        ScrollView {
+            VStack(spacing: Constants.Spacing.sm) {
+                // Title Input
+                titleSection
 
-                // Notes Section
-                Section {
-                    TextEditor(text: $notes)
-                        .frame(minHeight: 100)
-                } header: {
-                    Text("Notes")
-                } footer: {
-                    Text("Optional additional details")
-                        .font(.caption)
-                }
+                // Notes Row
+                notesRow
 
-                // Due Date Section
-                Section {
-                    Toggle("Set due date", isOn: $hasDueDate)
-                        .onChange(of: hasDueDate) { _ in
-                            HapticManager.shared.selectionChanged()
-                        }
+                // Date Row
+                dateRow
 
-                    if hasDueDate {
-                        DatePicker(
-                            "Due date",
-                            selection: $dueDate,
-                            displayedComponents: [.date]
-                        )
-                    }
-                } header: {
-                    Text("Due Date")
-                }
+                // Time Row
+                timeRow
 
-                // Scheduled Time Section
-                Section {
-                    Toggle("Schedule time", isOn: $hasScheduledTime)
-                        .onChange(of: hasScheduledTime) { _ in
-                            HapticManager.shared.selectionChanged()
-                        }
+                // Repeat Row
+                repeatRow
 
-                    if hasScheduledTime {
-                        DatePicker(
-                            "Start time",
-                            selection: $scheduledTime,
-                            displayedComponents: [.date, .hourAndMinute]
-                        )
+                // Priority Row
+                priorityRow
 
-                        DatePicker(
-                            "End time",
-                            selection: $scheduledEndTime,
-                            displayedComponents: [.hourAndMinute]
-                        )
-                    }
-                } header: {
-                    Text("Scheduled Time")
-                } footer: {
-                    if preselectedScheduledTime != nil {
-                        Text("Pre-selected from calendar")
-                            .font(.caption)
-                    } else if hasScheduledTime {
-                        Text("Schedule a specific time block for this task")
-                            .font(.caption)
-                    }
-                }
-
-                // Recurrence Section
-                Section {
-                    Toggle("Recurring task", isOn: $isRecurring)
-                        .onChange(of: isRecurring) { _ in
-                            HapticManager.shared.selectionChanged()
-                        }
-
-                    if isRecurring {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Repeat on:")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-
-                            HStack(spacing: 8) {
-                                ForEach(Array(zip([1, 2, 3, 4, 5, 6, 7], ["M", "T", "W", "T", "F", "S", "S"])), id: \.0) { day, label in
-                                    Button {
-                                        if selectedDays.contains(day) {
-                                            selectedDays.remove(day)
-                                        } else {
-                                            selectedDays.insert(day)
-                                        }
-                                        HapticManager.shared.selectionChanged()
-                                    } label: {
-                                        Text(label)
-                                            .font(.subheadline.weight(.semibold))
-                                            .frame(width: 36, height: 36)
-                                            .background(
-                                                Circle()
-                                                    .fill(selectedDays.contains(day) ? Color.blue : Color(.tertiarySystemFill))
-                                            )
-                                            .foregroundStyle(selectedDays.contains(day) ? .white : .primary)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        .padding(.vertical, 8)
-                    }
-                } header: {
-                    Text("Recurrence")
-                } footer: {
-                    if isRecurring {
-                        Text(selectedDays.isEmpty ? "Select at least one day for recurrence" : "Task will repeat on selected days")
-                            .font(.caption)
-                    }
-                }
-
-                // Priority Section
-                Section {
-                    Picker("Priority", selection: $priority) {
-                        ForEach(Constants.TaskPriority.allCases, id: \.self) { priority in
-                            HStack {
-                                if priority != .none {
-                                    Image(systemName: "flag.fill")
-                                        .foregroundStyle(priority.color)
-                                }
-                                Text(priority.displayName)
-                            }
-                            .tag(priority)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .onChange(of: priority) { _ in
-                        HapticManager.shared.selectionChanged()
-                    }
-                } header: {
-                    Text("Priority")
-                }
-
-                // List Section
-                Section {
-                    Picker("List", selection: $selectedList) {
-                        Text("None").tag(nil as TaskListEntity?)
-                        ForEach(viewModel.taskLists) { list in
-                            HStack {
-                                if let iconName = list.iconName {
-                                    Image(systemName: iconName)
-                                        .foregroundStyle(list.color)
-                                }
-                                Text(list.name)
-                            }
-                            .tag(list as TaskListEntity?)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .onChange(of: selectedList) { _ in
-                        HapticManager.shared.selectionChanged()
-                    }
-                } header: {
-                    Text("List")
-                } footer: {
-                    Text("Organize task into a specific list")
-                        .font(.caption)
+                // List Row
+                listRow
+            }
+            .padding(.horizontal, Constants.Spacing.lg)
+            .padding(.top, Constants.Spacing.md)
+            .padding(.bottom, Constants.Spacing.xxxl)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("New Task")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") {
+                    dismiss()
                 }
             }
-            .navigationTitle("New Task")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
 
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        addTask()
-                    }
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Add") {
+                    addTask()
                 }
+                .fontWeight(.semibold)
+                .disabled(!canAdd)
             }
-            .alert("Error", isPresented: $viewModel.showError) {
-                Button("OK") {
-                    viewModel.showError = false
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                isTitleFocused = true
+            }
+        }
+        .alert("Error", isPresented: $viewModel.showError) {
+            Button("OK") {
+                viewModel.showError = false
+            }
+        } message: {
+            Text(viewModel.errorMessage ?? "An unknown error occurred")
+        }
+    }
+
+    // MARK: - Title Section
+    private var titleSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            TextField("What do you want to do?", text: $title, axis: .vertical)
+                .font(.title3)
+                .textInputAutocapitalization(.sentences)
+                .focused($isTitleFocused)
+                .submitLabel(.done)
+                .lineLimit(1...3)
+                .padding(.horizontal, Constants.Spacing.lg)
+                .padding(.vertical, Constants.Spacing.md)
+        }
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: Constants.Layout.cornerRadiusMedium))
+    }
+
+    // MARK: - Notes Row
+    private var notesRow: some View {
+        ExpandableOptionRow(
+            icon: "note.text",
+            iconColor: .orange,
+            label: "Add notes",
+            value: notes.isEmpty ? nil : truncatedNotes,
+            isExpanded: $isNotesExpanded,
+            canClear: true,
+            onClear: {
+                notes = ""
+                isNotesExpanded = false
+            }
+        ) {
+            TextEditor(text: $notes)
+                .font(.body)
+                .frame(minHeight: 80, maxHeight: 150)
+                .focused($isNotesFocused)
+                .scrollContentBackground(.hidden)
+                .padding(.horizontal, -4) // Align with row padding
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isNotesFocused = true
+                    }
                 }
-            } message: {
-                Text(viewModel.errorMessage ?? "An unknown error occurred")
+        }
+    }
+
+    private var truncatedNotes: String {
+        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count > 30 {
+            return String(trimmed.prefix(30)) + "..."
+        }
+        return trimmed
+    }
+
+    // MARK: - Date Row
+    private var dateRow: some View {
+        ExpandableOptionRow(
+            icon: "calendar",
+            iconColor: .blue,
+            label: "No date",
+            value: QuickDateSelector.formatDate(dueDate),
+            isExpanded: $isDateExpanded,
+            canClear: true,
+            onClear: {
+                dueDate = nil
+                isDateExpanded = false
+            }
+        ) {
+            QuickDateSelector(
+                selectedDate: $dueDate,
+                showCalendar: $showDateCalendar
+            )
+        }
+    }
+
+    // MARK: - Time Row
+    private var timeRow: some View {
+        ExpandableOptionRow(
+            icon: "clock",
+            iconColor: .orange,
+            label: "Add time",
+            value: DurationSelector.formatTimeRange(start: scheduledStartTime, end: scheduledEndTime),
+            isExpanded: $isTimeExpanded,
+            canClear: true,
+            onClear: {
+                scheduledStartTime = nil
+                scheduledEndTime = nil
+                isTimeExpanded = false
+            }
+        ) {
+            DurationSelector(
+                startTime: $scheduledStartTime,
+                endTime: $scheduledEndTime,
+                referenceDate: dueDate ?? Date()
+            )
+        }
+    }
+
+    // MARK: - Repeat Row
+    private var repeatRow: some View {
+        ExpandableOptionRow(
+            icon: "repeat",
+            iconColor: .purple,
+            label: "No repeat",
+            value: WeekdaySelector.formatRecurrence(
+                isRecurring: isRecurring,
+                frequency: recurrenceFrequency,
+                days: selectedDays
+            ),
+            isExpanded: $isRepeatExpanded,
+            canClear: true,
+            onClear: {
+                isRecurring = false
+                selectedDays.removeAll()
+                isRepeatExpanded = false
+            }
+        ) {
+            WeekdaySelector(
+                isRecurring: $isRecurring,
+                selectedDays: $selectedDays,
+                frequency: $recurrenceFrequency
+            )
+        }
+    }
+
+    // MARK: - Priority Row
+    private var priorityRow: some View {
+        ExpandableOptionRow(
+            icon: "flag.fill",
+            iconColor: priority.color,
+            label: "No priority",
+            value: priority == .none ? nil : priority.displayName,
+            isExpanded: $isPriorityExpanded,
+            canClear: true,
+            onClear: {
+                priority = .none
+                isPriorityExpanded = false
+            }
+        ) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Constants.Spacing.sm) {
+                    ForEach(Constants.TaskPriority.allCases, id: \.rawValue) { p in
+                        priorityChip(p)
+                    }
+                }
             }
         }
     }
 
-    // MARK: - Methods
+    @ViewBuilder
+    private func priorityChip(_ p: Constants.TaskPriority) -> some View {
+        let isSelected = priority == p
 
+        Button {
+            withAnimation(animation) {
+                priority = p
+                if p != .none {
+                    isPriorityExpanded = false
+                }
+            }
+            HapticManager.shared.selectionChanged()
+        } label: {
+            HStack(spacing: 4) {
+                if p != .none {
+                    Image(systemName: "flag.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(p.color)
+                }
+                Text(p.displayName)
+                    .font(.subheadline.weight(.medium))
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .foregroundStyle(isSelected ? .white : .primary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? Color.accentColor : Color(.tertiarySystemFill))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - List Row
+    private var listRow: some View {
+        ExpandableOptionRow(
+            icon: selectedList?.iconName ?? "tray.fill",
+            iconColor: selectedList?.color ?? .gray,
+            label: "Inbox",
+            value: selectedList?.name,
+            isExpanded: $isListExpanded
+        ) {
+            VStack(spacing: 0) {
+                // Inbox option
+                listOption(nil, name: "Inbox", icon: "tray.fill", color: .gray)
+
+                // Custom lists
+                ForEach(viewModel.taskLists) { list in
+                    listOption(list, name: list.name, icon: list.iconName ?? "list.bullet", color: list.color)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func listOption(_ list: TaskListEntity?, name: String, icon: String, color: Color) -> some View {
+        let isSelected = (list == nil && selectedList == nil) || (list != nil && selectedList?.id == list?.id)
+
+        Button {
+            withAnimation(animation) {
+                selectedList = list
+                isListExpanded = false
+            }
+            HapticManager.shared.selectionChanged()
+        } label: {
+            HStack(spacing: Constants.Spacing.md) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(color)
+                    .frame(width: 24)
+
+                Text(name)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.tint)
+                }
+            }
+            .padding(.vertical, Constants.Spacing.md)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Add Task
     private func addTask() {
         Task {
+            // Convert recurrence days to array
+            let recurrenceDays: [Int]? = isRecurring && !selectedDays.isEmpty
+                ? Array(selectedDays).sorted()
+                : nil
+
             await viewModel.createTask(
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 notes: notes.isEmpty ? nil : notes.trimmingCharacters(in: .whitespacesAndNewlines),
-                dueDate: hasDueDate ? dueDate : nil,
-                scheduledTime: hasScheduledTime ? scheduledTime : nil,
-                scheduledEndTime: hasScheduledTime ? scheduledEndTime : nil,
+                dueDate: dueDate,
+                scheduledTime: scheduledStartTime,
+                scheduledEndTime: scheduledEndTime,
                 priority: priority.rawValue,
                 list: selectedList,
                 isRecurring: isRecurring,
-                recurrenceDays: isRecurring && !selectedDays.isEmpty ? Array(selectedDays).sorted() : nil
+                recurrenceDays: recurrenceDays
             )
+
+            HapticManager.shared.success()
             dismiss()
         }
     }
 }
 
 // MARK: - Preview
-#Preview {
-    AddTaskView(viewModel: TaskListViewModel(dataService: DataService(persistenceController: .preview)))
+#Preview("Empty") {
+    NavigationStack {
+        AddTaskView(viewModel: TaskListViewModel(dataService: DataService(persistenceController: .preview)))
+    }
+}
+
+#Preview("With Preselected Time") {
+    NavigationStack {
+        AddTaskView(
+            viewModel: TaskListViewModel(dataService: DataService(persistenceController: .preview)),
+            preselectedScheduledTime: Date(),
+            preselectedScheduledEndTime: Date().addingTimeInterval(3600)
+        )
+    }
 }

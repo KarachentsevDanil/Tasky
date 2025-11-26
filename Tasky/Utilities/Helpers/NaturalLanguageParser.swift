@@ -21,6 +21,72 @@ struct NaturalLanguageParser {
         var priority: Int16 = 0
         var listHint: String?
         var suggestions: [Suggestion] = []
+        var isDeadlineOnly: Bool = false  // True when time is set but no duration/end time
+        var recurrence: RecurrenceRule?   // Parsed recurrence pattern
+    }
+
+    /// Recurrence rule for repeating tasks
+    struct RecurrenceRule: Equatable {
+        enum Frequency: String, CaseIterable {
+            case daily = "daily"
+            case weekly = "weekly"
+            case monthly = "monthly"
+            case yearly = "yearly"
+            case weekdays = "weekdays"  // Mon-Fri
+            case weekends = "weekends"  // Sat-Sun
+        }
+
+        var frequency: Frequency
+        var interval: Int = 1           // e.g., "every 2 weeks" -> interval = 2
+        var weekdays: [Int]?            // For weekly: specific days (1=Sun, 2=Mon, etc.)
+        var dayOfMonth: Int?            // For monthly: specific day
+
+        var displayText: String {
+            switch frequency {
+            case .daily:
+                return interval == 1 ? "Daily" : "Every \(interval) days"
+            case .weekly:
+                if let days = weekdays, !days.isEmpty {
+                    let dayNames = days.compactMap { weekdayName(for: $0) }
+                    return "Weekly on \(dayNames.joined(separator: ", "))"
+                }
+                return interval == 1 ? "Weekly" : "Every \(interval) weeks"
+            case .monthly:
+                if let day = dayOfMonth {
+                    return "Monthly on the \(ordinal(day))"
+                }
+                return interval == 1 ? "Monthly" : "Every \(interval) months"
+            case .yearly:
+                return interval == 1 ? "Yearly" : "Every \(interval) years"
+            case .weekdays:
+                return "Every weekday"
+            case .weekends:
+                return "Every weekend"
+            }
+        }
+
+        private func weekdayName(for day: Int) -> String? {
+            let names = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+            guard day >= 1, day <= 7 else { return nil }
+            return names[day]
+        }
+
+        private func ordinal(_ n: Int) -> String {
+            let suffix: String
+            let ones = n % 10
+            let tens = (n / 10) % 10
+            if tens == 1 {
+                suffix = "th"
+            } else {
+                switch ones {
+                case 1: suffix = "st"
+                case 2: suffix = "nd"
+                case 3: suffix = "rd"
+                default: suffix = "th"
+                }
+            }
+            return "\(n)\(suffix)"
+        }
     }
 
     struct Suggestion: Identifiable {
@@ -35,6 +101,7 @@ struct NaturalLanguageParser {
             case duration
             case priority
             case list
+            case recurrence
         }
     }
 
@@ -78,6 +145,9 @@ struct NaturalLanguageParser {
     static func parse(_ input: String) -> ParsedTask {
         var result = ParsedTask(cleanTitle: input)
 
+        // Parse recurrence first (before other patterns that might conflict)
+        result = parseRecurrence(from: result)
+
         // Parse in order of specificity (most specific first)
         result = parseTimeRange(from: result)
         result = parseDuration(from: result)
@@ -95,6 +165,139 @@ struct NaturalLanguageParser {
         result.suggestions = generateSuggestions(from: result)
 
         return result
+    }
+
+    // MARK: - Recurrence Parsing
+
+    /// Parse recurrence patterns like "every day", "every monday", "weekly", "every 2 weeks"
+    private static func parseRecurrence(from parsed: ParsedTask) -> ParsedTask {
+        var result = parsed
+        let text = result.cleanTitle
+        let lowercased = text.lowercased()
+
+        // Weekday names for pattern matching
+        let weekdayPattern = "(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)"
+
+        // Order matters - most specific patterns first
+        let patterns: [(pattern: String, handler: (NSTextCheckingResult, String) -> RecurrenceRule?)] = [
+            // "every weekday" or "on weekdays"
+            (#"\b(?:every\s+weekday|on\s+weekdays|weekdays)\b"#, { _, _ in
+                RecurrenceRule(frequency: .weekdays)
+            }),
+
+            // "every weekend" or "on weekends"
+            (#"\b(?:every\s+weekend|on\s+weekends|weekends)\b"#, { _, _ in
+                RecurrenceRule(frequency: .weekends)
+            }),
+
+            // "every N days/weeks/months"
+            (#"\bevery\s+(\d+)\s+(day|days|week|weeks|month|months|year|years)\b"#, { match, text in
+                guard let intervalRange = Range(match.range(at: 1), in: text),
+                      let unitRange = Range(match.range(at: 2), in: text) else { return nil }
+                let interval = Int(text[intervalRange]) ?? 1
+                let unit = String(text[unitRange]).lowercased()
+                let frequency: RecurrenceRule.Frequency
+                if unit.hasPrefix("day") {
+                    frequency = .daily
+                } else if unit.hasPrefix("week") {
+                    frequency = .weekly
+                } else if unit.hasPrefix("month") {
+                    frequency = .monthly
+                } else {
+                    frequency = .yearly
+                }
+                return RecurrenceRule(frequency: frequency, interval: interval)
+            }),
+
+            // "every monday", "every tuesday", etc. (single weekday)
+            (#"\bevery\s+(\#(weekdayPattern))\b"#, { match, text in
+                guard let dayRange = Range(match.range(at: 1), in: text) else { return nil }
+                let dayName = String(text[dayRange]).lowercased()
+                let weekday = weekdayNumber(for: dayName)
+                return RecurrenceRule(frequency: .weekly, weekdays: [weekday])
+            }),
+
+            // "weekly on monday" or "weekly on tuesday"
+            (#"\bweekly\s+on\s+(\#(weekdayPattern))\b"#, { match, text in
+                guard let dayRange = Range(match.range(at: 1), in: text) else { return nil }
+                let dayName = String(text[dayRange]).lowercased()
+                let weekday = weekdayNumber(for: dayName)
+                return RecurrenceRule(frequency: .weekly, weekdays: [weekday])
+            }),
+
+            // "every month on the 15th" or "monthly on the 1st"
+            (#"\b(?:every\s+month|monthly)\s+on\s+the\s+(\d{1,2})(?:st|nd|rd|th)?\b"#, { match, text in
+                guard let dayRange = Range(match.range(at: 1), in: text) else { return nil }
+                let day = Int(text[dayRange]) ?? 1
+                return RecurrenceRule(frequency: .monthly, dayOfMonth: day)
+            }),
+
+            // Simple keywords: "daily", "weekly", "monthly", "yearly"
+            (#"\bdaily\b"#, { _, _ in
+                RecurrenceRule(frequency: .daily)
+            }),
+            (#"\bweekly\b"#, { _, _ in
+                RecurrenceRule(frequency: .weekly)
+            }),
+            (#"\bmonthly\b"#, { _, _ in
+                RecurrenceRule(frequency: .monthly)
+            }),
+            (#"\byearly\b"#, { _, _ in
+                RecurrenceRule(frequency: .yearly)
+            }),
+            (#"\bannually\b"#, { _, _ in
+                RecurrenceRule(frequency: .yearly)
+            }),
+
+            // "every day"
+            (#"\bevery\s+day\b"#, { _, _ in
+                RecurrenceRule(frequency: .daily)
+            }),
+            // "every week"
+            (#"\bevery\s+week\b"#, { _, _ in
+                RecurrenceRule(frequency: .weekly)
+            }),
+            // "every month"
+            (#"\bevery\s+month\b"#, { _, _ in
+                RecurrenceRule(frequency: .monthly)
+            }),
+            // "every year"
+            (#"\bevery\s+year\b"#, { _, _ in
+                RecurrenceRule(frequency: .yearly)
+            })
+        ]
+
+        for (pattern, handler) in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+                  let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)) else {
+                continue
+            }
+
+            if let rule = handler(match, lowercased) {
+                result.recurrence = rule
+
+                // Remove matched text from title
+                let matchRange = Range(match.range, in: text)!
+                result.cleanTitle = text.replacingCharacters(in: matchRange, with: "")
+                break
+            }
+        }
+
+        return result
+    }
+
+    /// Convert weekday name to number (1=Sun, 2=Mon, etc.)
+    private static func weekdayNumber(for name: String) -> Int {
+        let weekdays: [String: Int] = [
+            "sunday": 1, "sun": 1,
+            "monday": 2, "mon": 2,
+            "tuesday": 3, "tue": 3,
+            "wednesday": 4, "wed": 4,
+            "thursday": 5, "thu": 5,
+            "friday": 6, "fri": 6,
+            "saturday": 7, "sat": 7
+        ]
+        return weekdays[name.lowercased()] ?? 2  // Default to Monday
     }
 
     // MARK: - Time Range Parsing
@@ -671,6 +874,14 @@ struct NaturalLanguageParser {
                 type: .list,
                 text: listHint.capitalized,
                 icon: "list.bullet"
+            ))
+        }
+
+        if let recurrence = parsed.recurrence {
+            suggestions.append(Suggestion(
+                type: .recurrence,
+                text: recurrence.displayText,
+                icon: "repeat"
             ))
         }
 

@@ -31,8 +31,11 @@ struct QuickAddSheet: View {
     @State private var showDatePicker = false
     @State private var voiceInputError: String?
     @State private var parsedTask: NaturalLanguageParser.ParsedTask?
-    @State private var currentPlaceholderIndex: Int = 0
-    @State private var placeholderTimer: Timer?
+    @State private var isDeadlineOnly = false  // True = time without end time/duration
+
+    /// Persisted index for rotating placeholder hints (one per sheet open)
+    @AppStorage("quickAddHintIndex") private static var persistedHintIndex: Int = 0
+    private let hintIndex: Int
     @FocusState private var isFocused: Bool
     @StateObject private var voiceManager = VoiceInputManager()
     @Environment(\.accessibilityReduceMotion) var reduceMotion
@@ -43,7 +46,8 @@ struct QuickAddSheet: View {
         "Try: Meeting 2-3pm #work",
         "Try: Buy groceries urgent",
         "Try: Report for 2 hours",
-        "Try: Dentist Dec 15 at noon"
+        "Try: Standup every monday 9am",
+        "Try: Workout daily at 7am"
     ]
 
     // MARK: - Date Option Enum
@@ -119,7 +123,9 @@ struct QuickAddSheet: View {
     }
 
     // MARK: - Duration Presets
+    /// Duration presets. 0 minutes = deadline only (no end time)
     private let durationPresets: [(label: String, minutes: Int)] = [
+        ("1m", 0),  // Deadline only - sets time but no duration/end time
         ("15m", 15),
         ("30m", 30),
         ("1h", 60),
@@ -146,6 +152,10 @@ struct QuickAddSheet: View {
         self.onShowFullForm = onShowFullForm
         self.preselectedDate = preselectedDate
         self.preselectedTime = preselectedTime
+
+        // Capture current hint index and advance for next time
+        self.hintIndex = Self.persistedHintIndex
+        Self.persistedHintIndex = (Self.persistedHintIndex + 1) % 6  // 6 = number of placeholderExamples
 
         // Initialize state based on preselected values
         if let preselectedTime {
@@ -198,13 +208,9 @@ struct QuickAddSheet: View {
         .presentationBackground(Color(.systemBackground))
         .onAppear {
             setupInitialState()
-            startPlaceholderRotation()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 isFocused = true
             }
-        }
-        .onDisappear {
-            stopPlaceholderRotation()
         }
         .onChange(of: voiceManager.transcribedText) { _, newValue in
             if !newValue.isEmpty {
@@ -212,16 +218,12 @@ struct QuickAddSheet: View {
             }
         }
         .onChange(of: taskTitle) { _, newValue in
-            // Stop placeholder rotation when user starts typing
             if !newValue.isEmpty {
-                stopPlaceholderRotation()
                 let parsed = NaturalLanguageParser.parse(newValue)
                 parsedTask = parsed
                 applyParsedValues(parsed)
             } else {
                 parsedTask = nil
-                // Resume rotation when field is cleared
-                startPlaceholderRotation()
             }
         }
         .sheet(isPresented: $showDatePicker) {
@@ -251,7 +253,7 @@ struct QuickAddSheet: View {
     private var inputRow: some View {
         HStack(spacing: 8) {
             // Text field with rotating placeholder
-            TextField(placeholderExamples[currentPlaceholderIndex], text: $taskTitle)
+            TextField(placeholderExamples[hintIndex], text: $taskTitle)
                 .textFieldStyle(.plain)
                 .focused($isFocused)
                 .submitLabel(.send)
@@ -411,8 +413,15 @@ struct QuickAddSheet: View {
                 Image(systemName: hasScheduledTime ? "clock.fill" : "clock")
                     .font(.system(size: 14, weight: .semibold))
                 if hasScheduledTime {
-                    Text(formatShortTime(scheduledStartTime))
-                        .font(.system(size: 15, weight: .medium))
+                    if isDeadlineOnly {
+                        // Just show start time for deadline-only mode
+                        Text(formatShortTime(scheduledStartTime))
+                            .font(.system(size: 15, weight: .medium))
+                    } else {
+                        // Show time range for duration mode
+                        Text("\(formatShortTime(scheduledStartTime))-\(formatShortTime(scheduledEndTime))")
+                            .font(.system(size: 15, weight: .medium))
+                    }
                 } else {
                     Text("Time")
                         .font(.system(size: 15, weight: .medium))
@@ -462,7 +471,7 @@ struct QuickAddSheet: View {
             if hasScheduledTime {
                 VStack(spacing: 8) {
                     HStack {
-                        Text("Start")
+                        Text(isDeadlineOnly ? "Time" : "Start")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .frame(width: 50, alignment: .leading)
@@ -470,8 +479,8 @@ struct QuickAddSheet: View {
                         DatePicker("", selection: $scheduledStartTime, displayedComponents: .hourAndMinute)
                             .labelsHidden()
                             .onChange(of: scheduledStartTime) { _, newValue in
-                                // Ensure end time is always after start time
-                                if scheduledEndTime <= newValue {
+                                // Ensure end time is always after start time (when not deadline-only)
+                                if !isDeadlineOnly && scheduledEndTime <= newValue {
                                     scheduledEndTime = newValue.addingTimeInterval(1800) // +30 min
                                 }
                             }
@@ -479,16 +488,19 @@ struct QuickAddSheet: View {
                         Spacer()
                     }
 
-                    HStack {
-                        Text("End")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 50, alignment: .leading)
+                    // Only show end time picker when not in deadline-only mode
+                    if !isDeadlineOnly {
+                        HStack {
+                            Text("End")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 50, alignment: .leading)
 
-                        DatePicker("", selection: $scheduledEndTime, in: scheduledStartTime.addingTimeInterval(900)..., displayedComponents: .hourAndMinute)
-                            .labelsHidden()
+                            DatePicker("", selection: $scheduledEndTime, in: scheduledStartTime.addingTimeInterval(900)..., displayedComponents: .hourAndMinute)
+                                .labelsHidden()
 
-                        Spacer()
+                            Spacer()
+                        }
                     }
                 }
                 .padding(.top, 4)
@@ -504,10 +516,25 @@ struct QuickAddSheet: View {
 
     // MARK: - Duration Preset Button
     private func durationPresetButton(label: String, minutes: Int) -> some View {
-        Button {
+        let isSelected = hasScheduledTime && (
+            (minutes == 0 && isDeadlineOnly) ||
+            (minutes > 0 && !isDeadlineOnly && Int(scheduledEndTime.timeIntervalSince(scheduledStartTime) / 60) == minutes)
+        )
+
+        return Button {
             let now = roundToNearest15(Date())
             scheduledStartTime = now
-            scheduledEndTime = now.addingTimeInterval(TimeInterval(minutes * 60))
+
+            if minutes == 0 {
+                // Deadline only mode - just time, no end time/duration
+                isDeadlineOnly = true
+                scheduledEndTime = now  // Set same as start (won't be used)
+            } else {
+                // Normal duration mode
+                isDeadlineOnly = false
+                scheduledEndTime = now.addingTimeInterval(TimeInterval(minutes * 60))
+            }
+
             withAnimation {
                 hasScheduledTime = true
             }
@@ -515,13 +542,13 @@ struct QuickAddSheet: View {
         } label: {
             Text(label)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.primary)
+                .foregroundStyle(isSelected ? .white : .primary)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(.tertiarySystemFill))
+                        .fill(isSelected ? Color.accentColor : Color(.tertiarySystemFill))
                 )
         }
         .buttonStyle(.plain)
@@ -645,50 +672,39 @@ struct QuickAddSheet: View {
     // MARK: - Parsed Suggestions Row
     @ViewBuilder
     private func parsedSuggestionsRow(_ suggestions: [NaturalLanguageParser.Suggestion]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 6) {
+            // Simple "Detected:" label
+            Text("Detected:")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
 
-                ForEach(suggestions) { suggestion in
-                    parsedSuggestionChip(suggestion)
-                }
-            }
+            // Comma-separated list of detected items
+            Text(suggestions.map { formatSuggestion($0) }.joined(separator: " · "))
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
         }
-        .frame(height: 28)
-        .transition(.opacity.combined(with: .move(edge: .top)))
+        .frame(height: 24)
+        .transition(.opacity)
     }
 
-    @ViewBuilder
-    private func parsedSuggestionChip(_ suggestion: NaturalLanguageParser.Suggestion) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: suggestion.icon)
-                .font(.system(size: 10))
-            Text(suggestion.text)
-                .font(.system(size: 12, weight: .medium))
-        }
-        .foregroundStyle(suggestionChipColor(for: suggestion.type))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(
-            Capsule()
-                .fill(suggestionChipColor(for: suggestion.type).opacity(0.15))
-        )
-    }
-
-    private func suggestionChipColor(for type: NaturalLanguageParser.Suggestion.SuggestionType) -> Color {
-        switch type {
+    /// Format suggestion for display in the detected list
+    private func formatSuggestion(_ suggestion: NaturalLanguageParser.Suggestion) -> String {
+        switch suggestion.type {
         case .date:
-            return .blue
+            return suggestion.text
         case .time:
-            return .orange
+            return suggestion.text
         case .duration:
-            return .green
+            return suggestion.text
         case .priority:
-            return .red
+            return "!\(suggestion.text)"
         case .list:
-            return .purple
+            return "#\(suggestion.text)"
+        case .recurrence:
+            return "↻ \(suggestion.text)"
         }
     }
 
@@ -727,6 +743,19 @@ struct QuickAddSheet: View {
         // Apply parsed priority
         if parsed.priority > 0 {
             selectedPriority = Constants.TaskPriority(rawValue: parsed.priority) ?? .none
+        }
+
+        // Apply parsed recurrence
+        if let recurrence = parsed.recurrence {
+            switch recurrence.frequency {
+            case .daily:
+                selectedRepeatOption = .daily
+            case .weekly, .weekdays, .weekends:
+                selectedRepeatOption = .weekly
+            case .monthly, .yearly:
+                selectedRepeatOption = .monthly
+            }
+            showRepeatOptions = true
         }
     }
 
@@ -811,10 +840,15 @@ struct QuickAddSheet: View {
     private func calculateSheetHeight() -> CGFloat {
         var height: CGFloat = 214 // Base height
         if let parsed = parsedTask, !parsed.suggestions.isEmpty {
-            height += 44 // Suggestions row
+            height += 32 // Suggestions row (simpler design, less height)
         }
         if showTimePicker {
-            height += hasScheduledTime ? 180 : 100
+            if hasScheduledTime {
+                // Shorter height when in deadline-only mode (no End picker)
+                height += isDeadlineOnly ? 130 : 180
+            } else {
+                height += 100
+            }
         }
         if showRepeatOptions {
             height += 80
@@ -854,25 +888,6 @@ struct QuickAddSheet: View {
         }
     }
 
-    // MARK: - Placeholder Rotation
-    private func startPlaceholderRotation() {
-        // Don't rotate if user prefers reduced motion
-        guard !reduceMotion else { return }
-        // Don't start if already running or user has typed something
-        guard placeholderTimer == nil, taskTitle.isEmpty else { return }
-
-        placeholderTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: true) { _ in
-            withAnimation(.easeInOut(duration: 0.3)) {
-                currentPlaceholderIndex = (currentPlaceholderIndex + 1) % placeholderExamples.count
-            }
-        }
-    }
-
-    private func stopPlaceholderRotation() {
-        placeholderTimer?.invalidate()
-        placeholderTimer = nil
-    }
-
     // MARK: - Helper Methods
     private func handleVoiceInput() {
         if voiceManager.isRecording {
@@ -907,7 +922,11 @@ struct QuickAddSheet: View {
         Task {
             let finalDate = selectedDate
             let startTime = hasScheduledTime ? combineDateAndTime(date: finalDate, time: scheduledStartTime) : nil
-            let endTime = hasScheduledTime ? combineDateAndTime(date: finalDate, time: scheduledEndTime) : nil
+            // Only pass end time if not in deadline-only mode
+            let endTime = (hasScheduledTime && !isDeadlineOnly) ? combineDateAndTime(date: finalDate, time: scheduledEndTime) : nil
+
+            // Determine if recurring from parser or UI selection
+            let isRecurring = parsedTask?.recurrence != nil || selectedRepeatOption != .none
 
             await viewModel.createTask(
                 title: cleanedTitle,
@@ -915,7 +934,7 @@ struct QuickAddSheet: View {
                 scheduledTime: startTime,
                 scheduledEndTime: endTime,
                 priority: selectedPriority.rawValue,
-                isRecurring: selectedRepeatOption != .none
+                isRecurring: isRecurring
             )
 
             await MainActor.run {
@@ -935,6 +954,7 @@ struct QuickAddSheet: View {
         selectedRepeatOption = .none
         showTimePicker = false
         hasScheduledTime = false
+        isDeadlineOnly = false
         parsedTask = nil
         voiceManager.reset()
     }

@@ -34,73 +34,67 @@ final class AIUsageTracker: ObservableObject {
     }
 
     // MARK: - Suggestion Mapping
-    /// Maps tool names to suggestion configurations
+    /// Maps tool names to suggestion configurations for bulk-focused AI tools
     enum SuggestionMapping: String, CaseIterable {
+        // Core task creation
         case createTasks
-        case queryTasks
-        case completeTask
-        case updateTask
-        case rescheduleTask
-        case deleteTask
-        case manageList
-        case taskAnalytics
-        case focusSession
-        case listActions
+        // Task operations
+        case completeTasks
+        case rescheduleTasks
+        case deleteTasks
+        case updateTasks
+        // Smart operations
+        case planMyDay
+        case cleanup
+        case weeklyReview
 
         var toolName: String { rawValue }
 
         var suggestionText: String {
             switch self {
-            case .createTasks: return "Add a task"
-            case .queryTasks: return "What's due today?"
-            case .completeTask: return "Mark task done"
-            case .updateTask: return "Update a task"
-            case .rescheduleTask: return "Reschedule task"
-            case .deleteTask: return "Delete a task"
-            case .manageList: return "Manage lists"
-            case .taskAnalytics: return "My progress"
-            case .focusSession: return "Start focus"
-            case .listActions: return "What can I do?"
+            case .createTasks: return "Add new tasks"
+            case .completeTasks: return "Mark tasks done"
+            case .rescheduleTasks: return "Move tasks"
+            case .deleteTasks: return "Delete tasks"
+            case .updateTasks: return "Change priority"
+            case .planMyDay: return "Plan my day"
+            case .cleanup: return "Reschedule overdue"
+            case .weeklyReview: return "Weekly summary"
             }
         }
 
         var icon: String {
             switch self {
-            case .createTasks: return "plus.circle"
-            case .queryTasks: return "calendar"
-            case .completeTask: return "checkmark.circle"
-            case .updateTask: return "pencil"
-            case .rescheduleTask: return "arrow.uturn.forward"
-            case .deleteTask: return "trash"
-            case .manageList: return "folder"
-            case .taskAnalytics: return "chart.bar"
-            case .focusSession: return "timer"
-            case .listActions: return "questionmark.circle"
+            case .createTasks: return "plus.circle.fill"
+            case .completeTasks: return "checkmark.circle.fill"
+            case .rescheduleTasks: return "calendar.badge.clock"
+            case .deleteTasks: return "trash"
+            case .updateTasks: return "flag.fill"
+            case .planMyDay: return "sun.max.fill"
+            case .cleanup: return "arrow.clockwise"
+            case .weeklyReview: return "chart.bar.fill"
             }
         }
 
         var prompt: String {
             switch self {
-            case .createTasks: return ""  // Opens text field for user input
-            case .queryTasks: return "What's due today?"
-            case .completeTask: return "Mark as done: "
-            case .updateTask: return "Update task: "
-            case .rescheduleTask: return "Reschedule: "
-            case .deleteTask: return "Delete: "
-            case .manageList: return "Manage my lists"
-            case .taskAnalytics: return "How am I doing?"
-            case .focusSession: return "Start 25-minute focus"
-            case .listActions: return "What can you do?"
+            case .createTasks: return "Add: "
+            case .completeTasks: return "Mark done: "
+            case .rescheduleTasks: return "Move to tomorrow: "
+            case .deleteTasks: return "Delete: "
+            case .updateTasks: return "Set high priority: "
+            case .planMyDay: return "Plan my day"
+            case .cleanup: return "Reschedule overdue to today"
+            case .weeklyReview: return "How was my week?"
             }
         }
 
         /// Determine suggestion type based on prompt
         var suggestionType: SuggestionType {
-            // Actions have empty or partial prompts that need user completion
             switch self {
-            case .createTasks, .completeTask, .updateTask, .rescheduleTask, .deleteTask:
+            case .createTasks, .completeTasks, .rescheduleTasks, .deleteTasks, .updateTasks:
                 return .action
-            default:
+            case .planMyDay, .cleanup, .weeklyReview:
                 return .query
             }
         }

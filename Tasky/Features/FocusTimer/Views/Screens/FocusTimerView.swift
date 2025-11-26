@@ -8,37 +8,19 @@
 import SwiftUI
 internal import CoreData
 
-/// Focus timer component with compact and expanded modes
+/// Focus timer component with compact badge that opens full timer sheet
 struct FocusTimerView: View {
 
     // MARK: - Properties
     @ObservedObject var viewModel: FocusTimerViewModel
     let task: TaskEntity
     @State private var isExpanded = false
-    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     // MARK: - Body
     var body: some View {
         compactBadge
             .sheet(isPresented: $isExpanded) {
-                NavigationStack {
-                    expandedView
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .navigationBarTrailing) {
-                                Button {
-                                    isExpanded = false
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.title3)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                }
-                .presentationDetents([.large])
-                .presentationDragIndicator(.hidden)
-                .interactiveDismissDisabled(false)
+                FocusTimerSheet(viewModel: viewModel, task: task)
             }
     }
 
@@ -71,83 +53,6 @@ struct FocusTimerView: View {
             )
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: - Expanded View
-    private var expandedView: some View {
-        ZStack {
-            // Animated background gradient
-            LinearGradient(
-                colors: [
-                    timerColor.opacity(viewModel.timerState == .running ? 0.08 : 0.05),
-                    Color(.systemBackground)
-                ],
-                startPoint: .top,
-                endPoint: .center
-            )
-            .ignoresSafeArea()
-            .animation(reduceMotion ? .none : .easeInOut(duration: 0.8), value: viewModel.timerState)
-
-            ScrollView {
-                VStack(spacing: 32) {
-                    Spacer()
-                        .frame(height: 24)
-
-                    // Task title and session type
-                    VStack(spacing: 16) {
-                        Text(task.title)
-                            .font(.title2.weight(.bold))
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .padding(.horizontal, 32)
-                            .foregroundStyle(.primary)
-
-                        // Session type badge with animated background
-                        HStack(spacing: 8) {
-                            Image(systemName: viewModel.isBreak ? "cup.and.saucer.fill" : "brain.head.profile")
-                                .font(.caption)
-
-                            Text(viewModel.sessionType)
-                                .font(.subheadline.weight(.semibold))
-                        }
-                        .foregroundStyle(timerColor)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(
-                            Capsule()
-                                .fill(timerColor.opacity(0.15))
-                                .overlay(
-                                    Capsule()
-                                        .stroke(timerColor.opacity(0.3), lineWidth: 1)
-                                )
-                        )
-                        .shadow(color: timerColor.opacity(0.2), radius: 8, y: 4)
-                    }
-
-                    // Progress Ring
-                    FocusTimerProgressRing(
-                        viewModel: viewModel,
-                        timerColor: timerColor
-                    )
-
-                    // Controls
-                    FocusTimerControls(
-                        task: task,
-                        viewModel: viewModel,
-                        timerColor: timerColor,
-                        onDismiss: { isExpanded = false }
-                    )
-
-                    // Stats Section
-                    if !viewModel.isBreak {
-                        FocusTimerStats(task: task)
-                    }
-
-                    Spacer()
-                        .frame(height: 40)
-                }
-            }
-        }
     }
 
     // MARK: - Computed Properties

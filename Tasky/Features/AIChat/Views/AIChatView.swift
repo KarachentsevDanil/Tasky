@@ -34,14 +34,25 @@ struct AIChatView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if viewModel.isAvailable {
+                switch viewModel.isAvailable {
+                case .none:
+                    // Still checking availability - show loading
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(1.2)
+                    Spacer()
+
+                case .some(true):
                     // Chat messages
                     ScrollViewReader { proxy in
                         ScrollView {
                             LazyVStack(spacing: 16) {
                                 ForEach(viewModel.messages) { message in
-                                    MessageBubble(message: message)
-                                        .id(message.id)
+                                    // Don't show empty assistant messages (placeholder during streaming)
+                                    if !message.content.isEmpty {
+                                        MessageBubble(message: message)
+                                            .id(message.id)
+                                    }
                                 }
 
                                 // Typing indicator
@@ -74,7 +85,8 @@ struct AIChatView: View {
 
                     // Input area
                     inputArea
-                } else {
+
+                case .some(false):
                     unavailableView
                 }
             }
@@ -82,7 +94,7 @@ struct AIChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    if viewModel.isAvailable {
+                    if viewModel.isAvailable == true {
                         Menu {
                             Button(role: .destructive) {
                                 viewModel.clearChat()
@@ -205,7 +217,7 @@ struct AIChatView: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .disabled(!viewModel.isAvailable)
+                .disabled(viewModel.isAvailable != true)
                 .accessibilityLabel(voiceInputManager.isRecording ? "Stop recording" : "Voice input")
                 .accessibilityHint(voiceInputManager.isRecording ? "Tap to stop recording" : "Tap to dictate your task")
 

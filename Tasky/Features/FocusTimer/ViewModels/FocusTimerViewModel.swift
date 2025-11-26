@@ -14,11 +14,19 @@ internal import CoreData
 @MainActor
 class FocusTimerViewModel: ObservableObject {
 
+    // MARK: - Singleton
+    static let shared = FocusTimerViewModel()
+
     // MARK: - Published Properties
+    @Published var isTimerSheetPresented: Bool = false
     @Published var timerState: TimerState = .idle
     @Published var remainingSeconds: Int = 25 * 60 // 25 minutes default
     @Published var currentTask: TaskEntity?
     @Published var isBreak: Bool = false
+    @Published var currentSessionNumber: Int = 1
+    @Published var targetSessionCount: Int = 4
+    @Published var showStopConfirmation: Bool = false
+    @Published var dailyStreak: Int = 0
 
     // MARK: - Properties
     private let dataService: DataService
@@ -26,6 +34,8 @@ class FocusTimerViewModel: ObservableObject {
     private var sessionStartTime: Date?
     private var focusDuration: Int = 25 * 60  // 25 minutes
     private var breakDuration: Int = 5 * 60   // 5 minutes
+    private var hasPlayedFiveMinWarning = false
+    private var hasPlayedOneMinWarning = false
 
     // MARK: - Settings
     @UserDefault(key: "focusDuration", defaultValue: 25)
@@ -36,6 +46,15 @@ class FocusTimerViewModel: ObservableObject {
 
     @UserDefault(key: "timerSoundEnabled", defaultValue: true)
     private var soundEnabled: Bool
+
+    @UserDefault(key: "targetSessions", defaultValue: 4)
+    private var storedTargetSessions: Int
+
+    @UserDefault(key: "lastFocusDate", defaultValue: "")
+    private var lastFocusDateString: String
+
+    @UserDefault(key: "currentStreak", defaultValue: 0)
+    private var storedStreak: Int
 
     // MARK: - Timer States
     enum TimerState {
@@ -51,6 +70,44 @@ class FocusTimerViewModel: ObservableObject {
         self.focusDuration = focusDurationMinutes * 60
         self.breakDuration = breakDurationMinutes * 60
         self.remainingSeconds = focusDuration
+        self.targetSessionCount = storedTargetSessions
+        loadStreak()
+    }
+
+    // MARK: - Streak Management
+
+    private func loadStreak() {
+        let today = formatDate(Date())
+        let yesterday = formatDate(Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+
+        if lastFocusDateString == today {
+            // Already focused today, keep streak
+            dailyStreak = storedStreak
+        } else if lastFocusDateString == yesterday {
+            // Focused yesterday, streak continues
+            dailyStreak = storedStreak
+        } else {
+            // Streak broken
+            dailyStreak = 0
+            storedStreak = 0
+        }
+    }
+
+    private func updateStreak() {
+        let today = formatDate(Date())
+
+        if lastFocusDateString != today {
+            // First session of the day
+            dailyStreak += 1
+            storedStreak = dailyStreak
+            lastFocusDateString = today
+        }
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 
     // MARK: - Timer Control
@@ -64,9 +121,14 @@ class FocusTimerViewModel: ObservableObject {
         remainingSeconds = focusDuration
         sessionStartTime = Date()
         timerState = .running
+        hasPlayedFiveMinWarning = false
+        hasPlayedOneMinWarning = false
 
         startTimerPublisher()
         HapticManager.shared.mediumImpact()
+
+        // Start ambient sound
+        AudioManager.shared.startForSession()
 
         // Schedule notification for timer completion
         Task { @MainActor in
@@ -87,6 +149,9 @@ class FocusTimerViewModel: ObservableObject {
         startTimerPublisher()
         HapticManager.shared.lightImpact()
 
+        // Continue ambient sound during break
+        AudioManager.shared.resumeForSession()
+
         // Schedule notification for break completion
         Task { @MainActor in
             try? await NotificationManager.shared.scheduleTimerNotification(
@@ -103,6 +168,9 @@ class FocusTimerViewModel: ObservableObject {
         timerState = .paused
         timerCancellable?.cancel()
         HapticManager.shared.lightImpact()
+
+        // Pause ambient sound
+        AudioManager.shared.pauseForSession()
     }
 
     /// Resume the timer
@@ -112,6 +180,9 @@ class FocusTimerViewModel: ObservableObject {
         timerState = .running
         startTimerPublisher()
         HapticManager.shared.lightImpact()
+
+        // Resume ambient sound
+        AudioManager.shared.resumeForSession()
     }
 
     /// Stop the timer and save session
@@ -133,6 +204,9 @@ class FocusTimerViewModel: ObservableObject {
             await NotificationManager.shared.cancelAllTimerNotifications()
         }
 
+        // Stop ambient sound
+        AudioManager.shared.stopForSession()
+
         resetTimer()
         HapticManager.shared.mediumImpact()
     }
@@ -145,6 +219,9 @@ class FocusTimerViewModel: ObservableObject {
         currentTask = nil
         isBreak = false
         sessionStartTime = nil
+
+        // Stop ambient sound
+        AudioManager.shared.stopForSession()
 
         // Cancel timer notifications on reset
         Task { @MainActor in
@@ -165,11 +242,31 @@ class FocusTimerViewModel: ObservableObject {
                 Task { @MainActor in
                     if self.remainingSeconds > 0 {
                         self.remainingSeconds -= 1
+                        self.checkForWarningHaptics()
                     } else {
                         await self.completeTimer()
                     }
                 }
             }
+    }
+
+    private func checkForWarningHaptics() {
+        // 5-minute warning (only for focus sessions, not breaks)
+        if !isBreak && remainingSeconds == 5 * 60 && !hasPlayedFiveMinWarning {
+            hasPlayedFiveMinWarning = true
+            HapticManager.shared.lightImpact()
+        }
+
+        // 1-minute warning
+        if remainingSeconds == 60 && !hasPlayedOneMinWarning {
+            hasPlayedOneMinWarning = true
+            HapticManager.shared.mediumImpact()
+        }
+
+        // 10-second countdown haptics
+        if remainingSeconds <= 10 && remainingSeconds > 0 {
+            HapticManager.shared.selectionChanged()
+        }
     }
 
     private func completeTimer() async {
@@ -186,6 +283,9 @@ class FocusTimerViewModel: ObservableObject {
         if !isBreak, let task = currentTask {
             let duration = focusDuration
             await saveFocusSession(task: task, duration: duration)
+
+            // Update streak on completed focus session
+            updateStreak()
         }
 
         // Auto-transition to break or reset
@@ -193,10 +293,18 @@ class FocusTimerViewModel: ObservableObject {
             // Completed focus - offer break
             try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
             if timerState == .completed {
+                // Increment session counter after break transition
+                if currentSessionNumber < targetSessionCount {
+                    currentSessionNumber += 1
+                }
                 startBreak()
             }
         } else {
-            // Completed break - reset
+            // Completed break - check if more sessions needed
+            if currentSessionNumber >= targetSessionCount {
+                // All sessions complete
+                currentSessionNumber = 1
+            }
             resetTimer()
         }
     }
@@ -256,6 +364,79 @@ class FocusTimerViewModel: ObservableObject {
         isBreak ? "Break" : "Focus"
     }
 
+    /// Total duration in MM:SS format
+    var totalDurationFormatted: String {
+        let total = isBreak ? breakDuration : focusDuration
+        let minutes = total / 60
+        let seconds = total % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    /// Session progress text (e.g., "Session 2 of 4")
+    var sessionProgressText: String {
+        "Session \(currentSessionNumber) of \(targetSessionCount)"
+    }
+
+    /// Current focus duration in minutes
+    var currentFocusDurationMinutes: Int {
+        focusDuration / 60
+    }
+
+    /// Current break duration in minutes
+    var currentBreakDurationMinutes: Int {
+        breakDuration / 60
+    }
+
+    /// Check if sound is enabled
+    var isSoundEnabled: Bool {
+        soundEnabled
+    }
+
+    // MARK: - Extend Time
+
+    /// Extend the current timer by a specified number of minutes
+    func extendTime(by minutes: Int) {
+        guard timerState == .running || timerState == .paused else { return }
+
+        let additionalSeconds = minutes * 60
+        remainingSeconds += additionalSeconds
+
+        // Also extend the total duration for accurate progress calculation
+        if isBreak {
+            breakDuration += additionalSeconds
+        } else {
+            focusDuration += additionalSeconds
+        }
+
+        HapticManager.shared.lightImpact()
+
+        // Reschedule notification with extended time
+        Task { @MainActor in
+            await NotificationManager.shared.cancelAllTimerNotifications()
+            try? await NotificationManager.shared.scheduleTimerNotification(
+                sessionType: sessionType,
+                duration: TimeInterval(remainingSeconds)
+            )
+        }
+    }
+
+    // MARK: - Session Target
+
+    /// Update the target number of sessions
+    func updateTargetSessions(_ count: Int) {
+        let validCount = max(1, min(count, 12))
+        targetSessionCount = validCount
+        storedTargetSessions = validCount
+    }
+
+    // MARK: - Duration Presets
+
+    /// Available focus duration presets in minutes
+    static let focusDurationPresets = [15, 25, 30, 45, 50, 60, 90]
+
+    /// Available break duration presets in minutes
+    static let breakDurationPresets = [5, 10, 15, 20]
+
     // MARK: - Settings
 
     func updateFocusDuration(minutes: Int) {
@@ -273,5 +454,22 @@ class FocusTimerViewModel: ObservableObject {
 
     func toggleSound() {
         soundEnabled.toggle()
+    }
+
+    /// Request stop confirmation
+    func requestStop() {
+        showStopConfirmation = true
+        HapticManager.shared.lightImpact()
+    }
+
+    /// Confirm and execute stop
+    func confirmStop() {
+        showStopConfirmation = false
+        stopTimer()
+    }
+
+    /// Cancel stop request
+    func cancelStop() {
+        showStopConfirmation = false
     }
 }

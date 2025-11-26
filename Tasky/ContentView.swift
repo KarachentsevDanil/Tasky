@@ -12,11 +12,42 @@ struct ContentView: View {
 
     // MARK: - State
     @StateObject private var viewModel = TaskListViewModel()
+    @StateObject private var focusTimerViewModel = FocusTimerViewModel.shared
     @State private var selectedTab = 0
     @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system
 
     // MARK: - Body
     var body: some View {
+        ZStack(alignment: .top) {
+            mainTabView
+
+            // Global Timer Indicator (floating pill)
+            if shouldShowMiniTimer {
+                GeometryReader { geometry in
+                    MiniTimerIndicator(viewModel: focusTimerViewModel)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, geometry.safeAreaInsets.top + 8)
+                }
+                .transition(.asymmetric(
+                    insertion: .move(edge: .top).combined(with: .opacity),
+                    removal: .move(edge: .top).combined(with: .opacity)
+                ))
+                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: shouldShowMiniTimer)
+                .zIndex(100)
+                .allowsHitTesting(true)
+            }
+        }
+        .fullScreenCover(isPresented: $focusTimerViewModel.isTimerSheetPresented) {
+            if let task = focusTimerViewModel.currentTask {
+                FocusTimerSheet(viewModel: focusTimerViewModel, task: task)
+            }
+        }
+        .preferredColorScheme(appearanceMode.colorScheme)
+    }
+
+    // MARK: - Main Tab View
+
+    private var mainTabView: some View {
         TabView(selection: $selectedTab) {
             // Today Tab - Enhanced with completion ring and celebrations
             TodayView(viewModel: viewModel)
@@ -54,7 +85,15 @@ struct ContentView: View {
                 }
                 .tag(3)
         }
-        .preferredColorScheme(appearanceMode.colorScheme)
+    }
+
+    // MARK: - Computed Properties
+
+    /// Show mini timer when timer is active and full sheet is not presented
+    private var shouldShowMiniTimer: Bool {
+        focusTimerViewModel.timerState != .idle &&
+        focusTimerViewModel.timerState != .completed &&
+        !focusTimerViewModel.isTimerSheetPresented
     }
 }
 
