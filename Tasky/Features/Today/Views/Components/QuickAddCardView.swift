@@ -21,6 +21,18 @@ struct QuickAddCardView: View {
     @State private var parsedTask: NaturalLanguageParser.ParsedTask?
     @State private var showModeSelector = false
     @State private var currentMode: InputMode = .type
+    @State private var currentPlaceholderIndex: Int = 0
+    @State private var placeholderTimer: Timer?
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
+
+    // MARK: - Placeholder Examples
+    private let placeholderExamples = [
+        "Try: Call mom tomorrow at 3pm",
+        "Try: Meeting 2-3pm #work",
+        "Try: Buy groceries urgent",
+        "Try: Report for 2 hours",
+        "Try: Dentist Dec 15 at noon"
+    ]
 
     enum InputMode: String, CaseIterable {
         case type
@@ -136,6 +148,10 @@ struct QuickAddCardView: View {
         .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
         .onAppear {
             setupInitialMode()
+            startPlaceholderRotation()
+        }
+        .onDisappear {
+            stopPlaceholderRotation()
         }
     }
 
@@ -187,7 +203,7 @@ struct QuickAddCardView: View {
     }
 
     private var typeInputField: some View {
-        TextField("What do you want to accomplish?", text: $taskTitle)
+        TextField(placeholderExamples[currentPlaceholderIndex], text: $taskTitle)
             .focused($isFocused)
             .submitLabel(.done)
             .onSubmit {
@@ -195,9 +211,11 @@ struct QuickAddCardView: View {
             }
             .onChange(of: taskTitle) { _, newValue in
                 if !newValue.isEmpty {
+                    stopPlaceholderRotation()
                     parsedTask = NaturalLanguageParser.parse(newValue)
                 } else {
                     parsedTask = nil
+                    startPlaceholderRotation()
                 }
             }
     }
@@ -262,10 +280,14 @@ struct QuickAddCardView: View {
 
     private func chipColor(for type: NaturalLanguageParser.Suggestion.SuggestionType) -> Color {
         switch type {
-        case .date, .time:
+        case .date:
             return .blue
-        case .priority:
+        case .time:
             return .orange
+        case .duration:
+            return .green
+        case .priority:
+            return .red
         case .list:
             return .purple
         }
@@ -337,6 +359,26 @@ struct QuickAddCardView: View {
                 onAdd()
             }
         }
+    }
+
+    // MARK: - Placeholder Rotation
+
+    private func startPlaceholderRotation() {
+        // Don't rotate if user prefers reduced motion
+        guard !reduceMotion else { return }
+        // Don't start if already running or user has typed something
+        guard placeholderTimer == nil, taskTitle.isEmpty else { return }
+
+        placeholderTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: true) { _ in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                currentPlaceholderIndex = (currentPlaceholderIndex + 1) % placeholderExamples.count
+            }
+        }
+    }
+
+    private func stopPlaceholderRotation() {
+        placeholderTimer?.invalidate()
+        placeholderTimer = nil
     }
 
     // MARK: - Lifecycle

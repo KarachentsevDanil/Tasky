@@ -30,9 +30,21 @@ struct QuickAddSheet: View {
     @State private var scheduledEndTime: Date = Date()
     @State private var showDatePicker = false
     @State private var voiceInputError: String?
+    @State private var parsedTask: NaturalLanguageParser.ParsedTask?
+    @State private var currentPlaceholderIndex: Int = 0
+    @State private var placeholderTimer: Timer?
     @FocusState private var isFocused: Bool
     @StateObject private var voiceManager = VoiceInputManager()
     @Environment(\.accessibilityReduceMotion) var reduceMotion
+
+    // MARK: - Placeholder Examples
+    private let placeholderExamples = [
+        "Try: Call mom tomorrow at 3pm",
+        "Try: Meeting 2-3pm #work",
+        "Try: Buy groceries urgent",
+        "Try: Report for 2 hours",
+        "Try: Dentist Dec 15 at noon"
+    ]
 
     // MARK: - Date Option Enum
     enum DateOption: Equatable {
@@ -153,6 +165,11 @@ struct QuickAddSheet: View {
                 // Input row with voice and send buttons
                 inputRow
 
+                // Parsed suggestions (shown when NLP detects something)
+                if let parsed = parsedTask, !parsed.suggestions.isEmpty {
+                    parsedSuggestionsRow(parsed.suggestions)
+                }
+
                 // Date chips row
                 dateChipsRow
 
@@ -181,13 +198,30 @@ struct QuickAddSheet: View {
         .presentationBackground(Color(.systemBackground))
         .onAppear {
             setupInitialState()
+            startPlaceholderRotation()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 isFocused = true
             }
         }
+        .onDisappear {
+            stopPlaceholderRotation()
+        }
         .onChange(of: voiceManager.transcribedText) { _, newValue in
             if !newValue.isEmpty {
                 taskTitle = newValue
+            }
+        }
+        .onChange(of: taskTitle) { _, newValue in
+            // Stop placeholder rotation when user starts typing
+            if !newValue.isEmpty {
+                stopPlaceholderRotation()
+                let parsed = NaturalLanguageParser.parse(newValue)
+                parsedTask = parsed
+                applyParsedValues(parsed)
+            } else {
+                parsedTask = nil
+                // Resume rotation when field is cleared
+                startPlaceholderRotation()
             }
         }
         .sheet(isPresented: $showDatePicker) {
@@ -216,8 +250,8 @@ struct QuickAddSheet: View {
     // MARK: - Input Row
     private var inputRow: some View {
         HStack(spacing: 8) {
-            // Text field
-            TextField("Add a task...", text: $taskTitle)
+            // Text field with rotating placeholder
+            TextField(placeholderExamples[currentPlaceholderIndex], text: $taskTitle)
                 .textFieldStyle(.plain)
                 .focused($isFocused)
                 .submitLabel(.send)
@@ -608,6 +642,94 @@ struct QuickAddSheet: View {
         .accessibilityHint("Opens full task creation form with all options")
     }
 
+    // MARK: - Parsed Suggestions Row
+    @ViewBuilder
+    private func parsedSuggestionsRow(_ suggestions: [NaturalLanguageParser.Suggestion]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(suggestions) { suggestion in
+                    parsedSuggestionChip(suggestion)
+                }
+            }
+        }
+        .frame(height: 28)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    @ViewBuilder
+    private func parsedSuggestionChip(_ suggestion: NaturalLanguageParser.Suggestion) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: suggestion.icon)
+                .font(.system(size: 10))
+            Text(suggestion.text)
+                .font(.system(size: 12, weight: .medium))
+        }
+        .foregroundStyle(suggestionChipColor(for: suggestion.type))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            Capsule()
+                .fill(suggestionChipColor(for: suggestion.type).opacity(0.15))
+        )
+    }
+
+    private func suggestionChipColor(for type: NaturalLanguageParser.Suggestion.SuggestionType) -> Color {
+        switch type {
+        case .date:
+            return .blue
+        case .time:
+            return .orange
+        case .duration:
+            return .green
+        case .priority:
+            return .red
+        case .list:
+            return .purple
+        }
+    }
+
+    // MARK: - Apply Parsed Values
+    private func applyParsedValues(_ parsed: NaturalLanguageParser.ParsedTask) {
+        // Apply parsed date
+        if let date = parsed.dueDate {
+            let calendar = Calendar.current
+            if calendar.isDateInToday(date) {
+                selectedDateOption = .today
+            } else if calendar.isDateInTomorrow(date) {
+                selectedDateOption = .tomorrow
+            } else {
+                selectedDateOption = .custom(date)
+            }
+            selectedDate = date
+        }
+
+        // Apply parsed time and end time
+        if let time = parsed.scheduledTime {
+            scheduledStartTime = time
+
+            // Use parsed end time if available, otherwise calculate from duration or default to 1 hour
+            if let endTime = parsed.scheduledEndTime {
+                scheduledEndTime = endTime
+            } else if let durationSeconds = parsed.durationSeconds {
+                scheduledEndTime = time.addingTimeInterval(Double(durationSeconds))
+            } else {
+                scheduledEndTime = time.addingTimeInterval(3600) // Default 1 hour
+            }
+
+            hasScheduledTime = true
+            showTimePicker = true
+        }
+
+        // Apply parsed priority
+        if parsed.priority > 0 {
+            selectedPriority = Constants.TaskPriority(rawValue: parsed.priority) ?? .none
+        }
+    }
+
     // MARK: - Custom Date Picker Sheet
     private var customDatePickerSheet: some View {
         NavigationStack {
@@ -688,6 +810,9 @@ struct QuickAddSheet: View {
     // MARK: - Sheet Height Calculation
     private func calculateSheetHeight() -> CGFloat {
         var height: CGFloat = 214 // Base height
+        if let parsed = parsedTask, !parsed.suggestions.isEmpty {
+            height += 44 // Suggestions row
+        }
         if showTimePicker {
             height += hasScheduledTime ? 180 : 100
         }
@@ -729,6 +854,25 @@ struct QuickAddSheet: View {
         }
     }
 
+    // MARK: - Placeholder Rotation
+    private func startPlaceholderRotation() {
+        // Don't rotate if user prefers reduced motion
+        guard !reduceMotion else { return }
+        // Don't start if already running or user has typed something
+        guard placeholderTimer == nil, taskTitle.isEmpty else { return }
+
+        placeholderTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: true) { _ in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                currentPlaceholderIndex = (currentPlaceholderIndex + 1) % placeholderExamples.count
+            }
+        }
+    }
+
+    private func stopPlaceholderRotation() {
+        placeholderTimer?.invalidate()
+        placeholderTimer = nil
+    }
+
     // MARK: - Helper Methods
     private func handleVoiceInput() {
         if voiceManager.isRecording {
@@ -755,8 +899,10 @@ struct QuickAddSheet: View {
     }
 
     private func addTask() {
-        let trimmedTitle = taskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else { return }
+        // Use cleaned title from parser if available, otherwise use raw input
+        let cleanedTitle = parsedTask?.cleanTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? taskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedTitle.isEmpty else { return }
 
         Task {
             let finalDate = selectedDate
@@ -764,7 +910,7 @@ struct QuickAddSheet: View {
             let endTime = hasScheduledTime ? combineDateAndTime(date: finalDate, time: scheduledEndTime) : nil
 
             await viewModel.createTask(
-                title: trimmedTitle,
+                title: cleanedTitle,
                 dueDate: finalDate,
                 scheduledTime: startTime,
                 scheduledEndTime: endTime,
@@ -789,6 +935,7 @@ struct QuickAddSheet: View {
         selectedRepeatOption = .none
         showTimePicker = false
         hasScheduledTime = false
+        parsedTask = nil
         voiceManager.reset()
     }
 
