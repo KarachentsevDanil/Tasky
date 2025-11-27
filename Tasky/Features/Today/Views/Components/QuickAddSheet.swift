@@ -34,8 +34,9 @@ struct QuickAddSheet: View {
     @State private var isDeadlineOnly = false  // True = time without end time/duration
 
     /// Persisted index for rotating placeholder hints (one per sheet open)
-    @AppStorage("quickAddHintIndex") private static var persistedHintIndex: Int = 0
-    private let hintIndex: Int
+    @AppStorage("quickAddHintIndex") private var persistedHintIndex: Int = 0
+    @State private var hintIndex: Int = 0
+    @State private var hasSetHintIndex = false
     @FocusState private var isFocused: Bool
     @StateObject private var voiceManager = VoiceInputManager()
     @Environment(\.accessibilityReduceMotion) var reduceMotion
@@ -153,10 +154,6 @@ struct QuickAddSheet: View {
         self.preselectedDate = preselectedDate
         self.preselectedTime = preselectedTime
 
-        // Capture current hint index and advance for next time
-        self.hintIndex = Self.persistedHintIndex
-        Self.persistedHintIndex = (Self.persistedHintIndex + 1) % 6  // 6 = number of placeholderExamples
-
         // Initialize state based on preselected values
         if let preselectedTime {
             _hasScheduledTime = State(initialValue: true)
@@ -207,6 +204,12 @@ struct QuickAddSheet: View {
         .presentationDragIndicator(.hidden)
         .presentationBackground(Color(.systemBackground))
         .onAppear {
+            // Set hint index only once when sheet actually appears
+            if !hasSetHintIndex {
+                hintIndex = persistedHintIndex
+                persistedHintIndex = (persistedHintIndex + 1) % placeholderExamples.count
+                hasSetHintIndex = true
+            }
             setupInitialState()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 isFocused = true
