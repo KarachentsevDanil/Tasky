@@ -29,15 +29,12 @@ struct DayCalendarView: View {
 
     // MARK: - Computed Properties
 
-    /// Y offset for scrolling to current time
-    private var currentTimeYOffset: CGFloat {
-        let calendar = Calendar.current
-        let now = Date()
-        let hour = calendar.component(.hour, from: now)
-        let minute = calendar.component(.minute, from: now)
-
-        let hoursFromStart = CGFloat(hour - viewModel.startHour) + CGFloat(minute) / 60.0
-        return hoursFromStart * viewModel.hourHeight
+    /// Current hour for scrolling (clamped to valid range)
+    private var currentHourForScroll: Int {
+        let hour = Calendar.current.component(.hour, from: Date())
+        // Clamp to valid hour range and scroll to 1 hour before for context
+        let targetHour = max(viewModel.startHour, hour - 1)
+        return min(viewModel.endHour - 1, targetHour)
     }
 
     // MARK: - Body
@@ -88,12 +85,6 @@ struct DayCalendarView: View {
                             if viewModel.isDraggingNewEvent {
                                 dragPreviewOverlay(containerWidth: geometry.size.width)
                             }
-
-                            // Invisible anchor for scrolling to current time
-                            Color.clear
-                                .frame(width: 1, height: 1)
-                                .id("currentTimeAnchor")
-                                .offset(y: currentTimeYOffset)
                         }
                         .frame(
                             height: CGFloat(viewModel.endHour - viewModel.startHour) * viewModel.hourHeight
@@ -103,9 +94,9 @@ struct DayCalendarView: View {
                         containerWidth = geometry.size.width
                         // Scroll to current time on appear (only for today)
                         if Calendar.current.isDateInToday(viewModel.selectedDate) {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                 withAnimation(.easeOut(duration: 0.3)) {
-                                    scrollProxy.scrollTo("currentTimeAnchor", anchor: .center)
+                                    scrollProxy.scrollTo("hour_\(currentHourForScroll)", anchor: .top)
                                 }
                             }
                         }
@@ -115,7 +106,7 @@ struct DayCalendarView: View {
                         if Calendar.current.isDateInToday(newDate) {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                 withAnimation(.easeOut(duration: 0.3)) {
-                                    scrollProxy.scrollTo("currentTimeAnchor", anchor: .center)
+                                    scrollProxy.scrollTo("hour_\(currentHourForScroll)", anchor: .top)
                                 }
                             }
                         }
