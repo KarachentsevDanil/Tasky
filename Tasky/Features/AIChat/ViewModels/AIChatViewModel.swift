@@ -26,12 +26,18 @@ class AIChatViewModel: ObservableObject {
     @Published var createdTasksForPreview: [CreatedTaskInfo] = []
     @Published var showTaskPreview = false
 
+    /// Proactive suggestion from AI (displayed as banner)
+    @Published var proactiveSuggestion: ProactiveSuggestion?
+
     /// Undo manager for 5-second undo window
     @Published var undoManager = AIUndoManager()
 
     // MARK: - Properties
     private let dataService: DataService
+    private let contextService: ContextService
+    private let patternService: PatternTrackingService
     private let suggestionEngine: SuggestionEngine
+    private let proactiveSuggestionService: ProactiveSuggestionService
     private var session: LanguageModelSession?
     private var cancellables = Set<AnyCancellable>()
 
@@ -51,9 +57,17 @@ class AIChatViewModel: ObservableObject {
     @AppStorage("aiTaskPreview") private var aiTaskPreviewEnabled = true
 
     // MARK: - Initialization
-    init(dataService: DataService = DataService()) {
+    init(
+        dataService: DataService = DataService(),
+        contextService: ContextService = .shared,
+        patternService: PatternTrackingService = .shared,
+        proactiveSuggestionService: ProactiveSuggestionService = .shared
+    ) {
         self.dataService = dataService
+        self.contextService = contextService
+        self.patternService = patternService
         self.suggestionEngine = SuggestionEngine(dataService: dataService)
+        self.proactiveSuggestionService = proactiveSuggestionService
         checkAvailability()
         setupNotificationObserver()
     }
@@ -323,29 +337,40 @@ class AIChatViewModel: ObservableObject {
         // Get current date for the prompt
         let todayDateString = ISO8601DateFormatter().string(from: Date())
 
-        // Build and cache system prompt
-        systemPromptCache = buildSystemPrompt(todayDate: todayDateString, lists: listsInfo)
+        // Fetch user context for injection
+        let userContext = fetchUserContextForPrompt()
+
+        // Build and cache system prompt with context
+        systemPromptCache = buildSystemPrompt(todayDate: todayDateString, lists: listsInfo, userContext: userContext)
 
         session = LanguageModelSession(
             model: SystemLanguageModel.default,
             tools: [
-                // Core task creation
-                CreateTasksTool(dataService: dataService),
-                // Task operation tools
-                CompleteTasksTool(dataService: dataService),
-                RescheduleTasksTool(dataService: dataService),
-                DeleteTasksTool(dataService: dataService),
+                // === ACTION LAYER (4 tools) ===
+                CreateTasksTool(dataService: dataService, contextService: contextService),
                 UpdateTasksTool(dataService: dataService),
-                // Smart operation tools
-                PlanMyDayTool(dataService: dataService),
-                CleanupTool(dataService: dataService),
-                WeeklyReviewTool(dataService: dataService)
+                CompleteTasksTool(dataService: dataService, contextService: contextService),
+                DeleteTasksTool(dataService: dataService),
+
+                // === INTELLIGENCE LAYER (4 tools) ===
+                PlanDayTool(dataService: dataService, contextService: contextService),
+                SmartPrioritizeTool(dataService: dataService, contextService: contextService),
+                SuggestBreakdownTool(dataService: dataService, contextService: contextService),
+                QueryTasksTool(dataService: dataService, contextService: contextService),
+
+                // === MEMORY LAYER (3 tools) ===
+                RememberTool(contextService: contextService),
+                RecallTool(contextService: contextService),
+                ForgetContextTool(contextService: contextService),
+
+                // === UTILITY TOOLS ===
+                RescheduleTasksTool(dataService: dataService)
             ],
             instructions: systemPromptCache
         )
 
         // Initialize token count with system prompt + tool definitions (~50 tokens per tool)
-        estimatedTokenCount = estimateTokens(systemPromptCache) + (8 * 50)
+        estimatedTokenCount = estimateTokens(systemPromptCache) + (12 * 50)
 
         // Prewarm session for faster first response
         session?.prewarm()
@@ -353,27 +378,48 @@ class AIChatViewModel: ObservableObject {
 
     /// Build optimized system prompt for local LLM
     /// Condensed to ~100 tokens per Apple Foundation Models recommendations
-    private func buildSystemPrompt(todayDate: String, lists: String) -> String {
+    private func buildSystemPrompt(todayDate: String, lists: String, userContext: String = "") -> String {
+        // Base prompt ~80 tokens - leaves room for context injection
+        var prompt = """
+        Task assistant. Today: \(todayDate). Lists: \(lists).
+        Defaults: dueDate=today, list=Inbox. Responses: 1-2 sentences.
+        Tools: add→createTasks, done→completeTasks, reschedule→rescheduleTasks, delete→deleteTasks, update→updateTasks, plan→planDay, prioritize→smartPrioritize, breakdown→suggestBreakdown, find→queryTasks, remember→remember, recall→recall, forget→forgetContext.
         """
-        Role: Tasky bulk operations assistant.
-        Today: \(todayDate)
-        Lists: \(lists)
 
-        Rules:
-        - Single task = filter with taskNames:["name"]
-        - Default: dueDate=today, list=Inbox
-        - Keep responses under 2 sentences
+        // Inject user context if available (budget ~20 tokens)
+        if !userContext.isEmpty {
+            prompt += "\nContext: \(userContext)"
+        }
 
-        Tool selection:
-        - add/create/remind → createTasks
-        - done/complete/finished → completeTasks
-        - move/postpone/reschedule → rescheduleTasks
-        - delete/remove → deleteTasks
-        - priority/move to list → updateTasks
-        - plan my day → planMyDay
-        - clean up/tidy/fix overdue → cleanup
-        - weekly review/summary → weeklyReview
-        """
+        return prompt
+    }
+
+    /// Fetch user context for prompt injection
+    private func fetchUserContextForPrompt() -> String {
+        do {
+            // Fetch high-confidence context items
+            let contexts = try contextService.fetchRelevantContext(maxItems: 10, minConfidence: 0.4)
+
+            if contexts.isEmpty {
+                return ""
+            }
+
+            // Format as brief list
+            var lines: [String] = []
+            for context in contexts {
+                lines.append("- \(context.promptDescription)")
+            }
+
+            // Add pattern insights if available
+            if let patternSummary = try? patternService.getPatternSummaryForPrompt(), !patternSummary.isEmpty {
+                lines.append("- Patterns: \(patternSummary)")
+            }
+
+            return lines.joined(separator: "\n")
+        } catch {
+            print("⚠️ Failed to fetch context for prompt: \(error)")
+            return ""
+        }
     }
 
     /// Fetch available list names for the system prompt
@@ -405,6 +451,35 @@ class AIChatViewModel: ObservableObject {
     // MARK: - Suggestions
     func loadSuggestions() async {
         suggestions = await suggestionEngine.generateSuggestions()
+    }
+
+    // MARK: - Proactive Suggestions
+
+    /// Load proactive suggestion (call on view appear and after operations)
+    func loadProactiveSuggestion() async {
+        proactiveSuggestionService.resetDailyCounters()
+        proactiveSuggestion = await proactiveSuggestionService.evaluateSuggestions()
+    }
+
+    /// User tapped action on proactive suggestion
+    func handleProactiveSuggestionAction(_ suggestion: ProactiveSuggestion) {
+        proactiveSuggestionService.engageWithSuggestion(suggestion)
+        proactiveSuggestion = nil
+
+        // Send the suggested action as a message
+        sendMessage(suggestion.suggestedAction)
+    }
+
+    /// User dismissed proactive suggestion
+    func dismissProactiveSuggestion(_ suggestion: ProactiveSuggestion) {
+        proactiveSuggestionService.dismissSuggestion(suggestion)
+        proactiveSuggestion = nil
+    }
+
+    /// User snoozed proactive suggestion
+    func snoozeProactiveSuggestion(_ suggestion: ProactiveSuggestion) {
+        proactiveSuggestionService.snoozeSuggestion(suggestion)
+        proactiveSuggestion = nil
     }
 
     private func addUnavailableMessage(title: String, message: String, suggestion: String) {

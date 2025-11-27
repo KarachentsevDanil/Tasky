@@ -11,6 +11,21 @@ import Foundation
 /// Manages the Core Data stack and provides access to the managed object context
 class PersistenceController {
 
+    // MARK: - App Group
+
+    /// App Group identifier for sharing data with widgets and extensions
+    static let appGroupIdentifier = "group.LaktionovaSoftware.Tasky"
+
+    /// Shared container URL for App Group
+    static var sharedContainerURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+    }
+
+    /// Store URL within the App Group container
+    static var sharedStoreURL: URL? {
+        sharedContainerURL?.appendingPathComponent("TaskTracker.sqlite")
+    }
+
     // MARK: - Singleton
     static let shared = PersistenceController()
 
@@ -63,11 +78,17 @@ class PersistenceController {
     let container: NSPersistentContainer
 
     // MARK: - Initialization
-    init(inMemory: Bool = false) {
+    init(inMemory: Bool = false, useSharedContainer: Bool = true) {
         container = NSPersistentContainer(name: "TaskTracker")
 
         if inMemory {
             container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
+        } else if useSharedContainer, let sharedURL = Self.sharedStoreURL {
+            // Use App Group container for data sharing with widgets
+            container.persistentStoreDescriptions.first?.url = sharedURL
+
+            // Migrate data from old location if needed
+            Self.migrateStoreIfNeeded(container: container, to: sharedURL)
         }
 
         container.loadPersistentStores { storeDescription, error in
@@ -81,6 +102,44 @@ class PersistenceController {
         // Configure context
         container.viewContext.automaticallyMergesChangesFromParent = true
         container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+    }
+
+    // MARK: - Data Migration
+
+    /// Migrate store from old location to App Group container if needed
+    private static func migrateStoreIfNeeded(container: NSPersistentContainer, to newURL: URL) {
+        // Check if old store exists and new store doesn't
+        guard let oldURL = container.persistentStoreDescriptions.first?.url,
+              oldURL != newURL,
+              FileManager.default.fileExists(atPath: oldURL.path),
+              !FileManager.default.fileExists(atPath: newURL.path) else {
+            return
+        }
+
+        // Perform migration
+        do {
+            let coordinator = NSPersistentStoreCoordinator(managedObjectModel: container.managedObjectModel)
+            let oldStore = try coordinator.addPersistentStore(
+                ofType: NSSQLiteStoreType,
+                configurationName: nil,
+                at: oldURL
+            )
+
+            try coordinator.migratePersistentStore(
+                oldStore,
+                to: newURL,
+                type: .sqlite
+            )
+
+            print("Successfully migrated Core Data store to App Group container")
+
+            // Optionally remove old store files
+            try? FileManager.default.removeItem(at: oldURL)
+            try? FileManager.default.removeItem(at: oldURL.deletingPathExtension().appendingPathExtension("sqlite-wal"))
+            try? FileManager.default.removeItem(at: oldURL.deletingPathExtension().appendingPathExtension("sqlite-shm"))
+        } catch {
+            print("Failed to migrate Core Data store: \(error)")
+        }
     }
 
     // MARK: - Context Management

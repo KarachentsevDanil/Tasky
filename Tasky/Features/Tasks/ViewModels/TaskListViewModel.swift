@@ -16,9 +16,14 @@ class TaskListViewModel: ObservableObject {
     // MARK: - Published Properties
     @Published var tasks: [TaskEntity] = []
     @Published var taskLists: [TaskListEntity] = []
+    @Published var tags: [TagEntity] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var showError = false
+
+    // MARK: - Multi-Select Mode
+    @Published var isMultiSelectMode = false
+    @Published var selectedTaskIds: Set<UUID> = []
 
     // MARK: - Properties
     let dataService: DataService
@@ -47,6 +52,7 @@ class TaskListViewModel: ObservableObject {
         case inbox
         case completed
         case list(TaskListEntity)
+        case tag(TagEntity)
     }
 
     @Published var currentFilter: FilterType = .all
@@ -64,6 +70,7 @@ class TaskListViewModel: ObservableObject {
             do {
                 try dataService.createDefaultInboxIfNeeded()
                 await loadTaskLists()
+                await loadTags()
                 await loadTasks()
             } catch {
                 handleError(error)
@@ -92,6 +99,8 @@ class TaskListViewModel: ObservableObject {
                 tasks = try dataService.fetchCompletedTasks()
             case .list(let list):
                 tasks = try dataService.fetchTasks(for: list)
+            case .tag(let tag):
+                tasks = try dataService.fetchTasks(withTag: tag)
             }
         } catch {
             handleError(error)
@@ -107,9 +116,19 @@ class TaskListViewModel: ObservableObject {
         }
     }
 
+    /// Load all tags
+    func loadTags() async {
+        do {
+            tags = try dataService.fetchAllTags()
+        } catch {
+            handleError(error)
+        }
+    }
+
     /// Refresh all data
     func refresh() async {
         await loadTaskLists()
+        await loadTags()
         await loadTasks()
     }
 
@@ -433,6 +452,279 @@ class TaskListViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Tag Operations
+
+    /// Create a new tag
+    func createTag(name: String, colorHex: String? = nil) async {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            handleError(ValidationError.emptyTagName)
+            return
+        }
+
+        do {
+            try dataService.createTag(name: name, colorHex: colorHex)
+            await loadTags()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Update a tag
+    func updateTag(_ tag: TagEntity, name: String? = nil, colorHex: String? = nil) async {
+        do {
+            try dataService.updateTag(tag, name: name, colorHex: colorHex)
+            await loadTags()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Delete a tag
+    func deleteTag(_ tag: TagEntity) async {
+        do {
+            try dataService.deleteTag(tag)
+            await loadTags()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Add tag to task
+    func addTag(_ tag: TagEntity, to task: TaskEntity) async {
+        do {
+            try dataService.addTag(tag, to: task)
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Remove tag from task
+    func removeTag(_ tag: TagEntity, from task: TaskEntity) async {
+        do {
+            try dataService.removeTag(tag, from: task)
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Set tags for a task
+    func setTags(_ tags: [TagEntity], for task: TaskEntity) async {
+        do {
+            try dataService.setTags(tags, for: task)
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    // MARK: - Subtask Operations
+
+    /// Create a subtask for a task
+    func createSubtask(title: String, for task: TaskEntity) async {
+        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+
+        do {
+            try dataService.createSubtask(title: title, for: task)
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Toggle subtask completion
+    func toggleSubtaskCompletion(_ subtask: SubtaskEntity) async {
+        do {
+            try dataService.toggleSubtaskCompletion(subtask)
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Delete a subtask
+    func deleteSubtask(_ subtask: SubtaskEntity) async {
+        do {
+            try dataService.deleteSubtask(subtask)
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Update subtask title
+    func updateSubtask(_ subtask: SubtaskEntity, title: String) async {
+        do {
+            try dataService.updateSubtask(subtask, title: title)
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Reorder subtasks
+    func reorderSubtasks(_ subtasks: [SubtaskEntity]) async {
+        do {
+            try dataService.reorderSubtasks(subtasks)
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Convert subtask to task
+    func convertSubtaskToTask(_ subtask: SubtaskEntity) async {
+        do {
+            try dataService.convertSubtaskToTask(subtask)
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    // MARK: - Multi-Select Mode
+
+    /// Enter multi-select mode
+    func enterMultiSelectMode() {
+        isMultiSelectMode = true
+        selectedTaskIds.removeAll()
+    }
+
+    /// Exit multi-select mode
+    func exitMultiSelectMode() {
+        isMultiSelectMode = false
+        selectedTaskIds.removeAll()
+    }
+
+    /// Toggle task selection
+    func toggleTaskSelection(_ task: TaskEntity) {
+        if selectedTaskIds.contains(task.id) {
+            selectedTaskIds.remove(task.id)
+        } else {
+            selectedTaskIds.insert(task.id)
+        }
+    }
+
+    /// Select all visible tasks
+    func selectAllTasks() {
+        selectedTaskIds = Set(tasks.map { $0.id })
+    }
+
+    /// Deselect all tasks
+    func deselectAllTasks() {
+        selectedTaskIds.removeAll()
+    }
+
+    /// Check if a task is selected
+    func isTaskSelected(_ task: TaskEntity) -> Bool {
+        selectedTaskIds.contains(task.id)
+    }
+
+    /// Get selected tasks
+    var selectedTasks: [TaskEntity] {
+        tasks.filter { selectedTaskIds.contains($0.id) }
+    }
+
+    /// Selected tasks count
+    var selectedTasksCount: Int {
+        selectedTaskIds.count
+    }
+
+    // MARK: - Bulk Operations
+
+    /// Bulk complete selected tasks
+    func bulkCompleteSelectedTasks() async {
+        let tasksToComplete = selectedTasks
+        guard !tasksToComplete.isEmpty else { return }
+
+        do {
+            try dataService.completeTasks(tasksToComplete)
+            HapticManager.shared.success()
+            exitMultiSelectMode()
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Bulk delete selected tasks
+    func bulkDeleteSelectedTasks() async {
+        let tasksToDelete = selectedTasks
+        guard !tasksToDelete.isEmpty else { return }
+
+        do {
+            try dataService.deleteTasks(tasksToDelete)
+            HapticManager.shared.success()
+            exitMultiSelectMode()
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Bulk reschedule selected tasks
+    func bulkRescheduleSelectedTasks(to date: Date) async {
+        let tasksToReschedule = selectedTasks
+        guard !tasksToReschedule.isEmpty else { return }
+
+        do {
+            try dataService.rescheduleTasks(tasksToReschedule, to: date)
+            HapticManager.shared.success()
+            exitMultiSelectMode()
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Bulk move selected tasks to a list
+    func bulkMoveSelectedTasks(to list: TaskListEntity?) async {
+        let tasksToMove = selectedTasks
+        guard !tasksToMove.isEmpty else { return }
+
+        do {
+            try dataService.moveTasksToList(tasksToMove, list: list)
+            HapticManager.shared.success()
+            exitMultiSelectMode()
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Bulk set priority for selected tasks
+    func bulkSetPriorityForSelectedTasks(_ priority: Int16) async {
+        let tasks = selectedTasks
+        guard !tasks.isEmpty else { return }
+
+        do {
+            try dataService.updateTasksPriority(tasks, priority: priority)
+            HapticManager.shared.success()
+            exitMultiSelectMode()
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
+    /// Bulk add tag to selected tasks
+    func bulkAddTagToSelectedTasks(_ tag: TagEntity) async {
+        let tasks = selectedTasks
+        guard !tasks.isEmpty else { return }
+
+        do {
+            try dataService.addTagToTasks(tag, tasks: tasks)
+            HapticManager.shared.success()
+            exitMultiSelectMode()
+            await loadTasks()
+        } catch {
+            handleError(error)
+        }
+    }
+
     // MARK: - Computed Properties
 
     /// Get the top priority task (highest AI score, not completed)
@@ -468,6 +760,7 @@ enum ValidationError: LocalizedError {
     case titleTooLong
     case emptyListName
     case listNameTooLong
+    case emptyTagName
 
     var errorDescription: String? {
         switch self {
@@ -479,6 +772,8 @@ enum ValidationError: LocalizedError {
             return "List name cannot be empty"
         case .listNameTooLong:
             return "List name is too long (max \(Constants.Limits.maxListNameLength) characters)"
+        case .emptyTagName:
+            return "Tag name cannot be empty"
         }
     }
 }

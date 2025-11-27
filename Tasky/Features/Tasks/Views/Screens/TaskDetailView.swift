@@ -37,6 +37,11 @@ struct TaskDetailView: View {
     @State private var selectedDays: Set<Int>
     @State private var recurrenceFrequency: WeekdaySelector.RecurrenceFrequency
 
+    // MARK: - State - Tags & Subtasks
+    @State private var selectedTags: Set<TagEntity>
+    @State private var isSubtasksExpanded = false
+    @State private var isTagsExpanded = false
+
     // MARK: - State - Expansion
     @State private var isNotesExpanded: Bool
     @State private var isDateExpanded = false
@@ -112,6 +117,10 @@ struct TaskDetailView: View {
         _selectedDays = State(initialValue: Set(task.recurrenceDayNumbers))
         _recurrenceFrequency = State(initialValue: task.isRecurring ? .weekly : .weekly)
         _isNotesExpanded = State(initialValue: !(task.notes ?? "").isEmpty)
+
+        // Initialize tags
+        _selectedTags = State(initialValue: Set(task.tagsArray))
+        _isSubtasksExpanded = State(initialValue: task.hasSubtasks)
     }
 
     // MARK: - Body
@@ -124,6 +133,9 @@ struct TaskDetailView: View {
 
                     // Notes Row
                     notesRow
+
+                    // Subtasks Section
+                    subtasksRow
 
                     // Date Row
                     dateRow
@@ -139,6 +151,9 @@ struct TaskDetailView: View {
 
                     // List Row
                     listRow
+
+                    // Tags Row
+                    tagsRow
 
                     // Footer info
                     footerSection
@@ -461,6 +476,38 @@ struct TaskDetailView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Subtasks Row
+    private var subtasksRow: some View {
+        ExpandableOptionRow(
+            icon: "checklist",
+            iconColor: .blue,
+            label: "Subtasks",
+            value: task.subtasksProgressString,
+            isExpanded: $isSubtasksExpanded,
+            canClear: false
+        ) {
+            SubtaskListView(viewModel: viewModel, task: task)
+        }
+    }
+
+    // MARK: - Tags Row
+    private var tagsRow: some View {
+        ExpandableOptionRow(
+            icon: "tag",
+            iconColor: .purple,
+            label: "Tags",
+            value: selectedTags.isEmpty ? nil : "\(selectedTags.count) tag\(selectedTags.count == 1 ? "" : "s")",
+            isExpanded: $isTagsExpanded,
+            canClear: true,
+            onClear: {
+                selectedTags.removeAll()
+                isTagsExpanded = false
+            }
+        ) {
+            TagPickerView(viewModel: viewModel, selectedTags: $selectedTags)
+        }
+    }
+
     // MARK: - Footer Section
     private var footerSection: some View {
         VStack(alignment: .leading, spacing: Constants.Spacing.sm) {
@@ -500,6 +547,9 @@ struct TaskDetailView: View {
                 isRecurring: isRecurring,
                 recurrenceDays: recurrenceDays
             )
+
+            // Save tags
+            await viewModel.setTags(Array(selectedTags), for: task)
 
             HapticManager.shared.success()
             dismiss()

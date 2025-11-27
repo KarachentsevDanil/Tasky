@@ -12,6 +12,8 @@ struct SettingsView: View {
 
     // MARK: - Environment
     @StateObject private var notificationManager = NotificationManager.shared
+    @StateObject private var reviewService = WeeklyReviewService.shared
+    @StateObject private var morningBriefService = MorningBriefService.shared
 
     // MARK: - State
     @AppStorage("hapticsEnabled") private var hapticsEnabled = true
@@ -25,7 +27,11 @@ struct SettingsView: View {
 
     @State private var showingExportSheet = false
     @State private var showingPermissionAlert = false
+    @State private var showingWeeklyReview = false
     @State private var pendingNotificationCount = 0
+    @State private var memoryItemCount = 0
+    @State private var morningBriefTime = Date()
+    @State private var weekendBriefTime = Date()
 
     // MARK: - Body
     var body: some View {
@@ -83,6 +89,136 @@ struct SettingsView: View {
                     notificationFooter
                 }
 
+                // Weekly Review Section
+                Section {
+                    // Start Review Button
+                    Button {
+                        showingWeeklyReview = true
+                    } label: {
+                        HStack {
+                            Label("Start Weekly Review", systemImage: "calendar.badge.checkmark")
+                            Spacer()
+                            if reviewService.currentStreak > 0 {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "flame.fill")
+                                        .foregroundStyle(.orange)
+                                    Text("\(reviewService.currentStreak)")
+                                        .foregroundStyle(.orange)
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                        }
+                    }
+
+                    // Review Day Picker
+                    Picker(selection: Binding(
+                        get: { reviewService.reviewDay },
+                        set: { reviewService.reviewDay = $0 }
+                    )) {
+                        Text("Sunday").tag(1)
+                        Text("Monday").tag(2)
+                        Text("Tuesday").tag(3)
+                        Text("Wednesday").tag(4)
+                        Text("Thursday").tag(5)
+                        Text("Friday").tag(6)
+                        Text("Saturday").tag(7)
+                    } label: {
+                        Label("Review Day", systemImage: "calendar")
+                    }
+
+                    // Review Time Picker
+                    Picker(selection: Binding(
+                        get: { reviewService.reviewHour },
+                        set: { reviewService.reviewHour = $0 }
+                    )) {
+                        ForEach(0..<24, id: \.self) { hour in
+                            Text(formatHour(hour)).tag(hour)
+                        }
+                    } label: {
+                        Label("Review Time", systemImage: "clock")
+                    }
+
+                    // Reminder Toggle
+                    Toggle(isOn: Binding(
+                        get: { reviewService.isEnabled },
+                        set: { reviewService.isEnabled = $0 }
+                    )) {
+                        Label("Weekly Reminder", systemImage: "bell.badge")
+                    }
+                } header: {
+                    Text("Weekly Review")
+                } footer: {
+                    if let nextReview = reviewService.nextScheduledReview {
+                        Text("Next review: \(nextReview.formatted(date: .abbreviated, time: .shortened))")
+                    } else {
+                        Text("Take 5-10 minutes each week to reflect and plan ahead")
+                    }
+                }
+
+                // Goals Section
+                Section {
+                    NavigationLink {
+                        GoalsListView()
+                    } label: {
+                        Label("Goals", systemImage: "target")
+                    }
+                } header: {
+                    Text("Goals")
+                } footer: {
+                    Text("Track progress on larger projects by linking tasks to goals")
+                }
+
+                // Morning Brief Section
+                Section {
+                    // Enable Toggle
+                    Toggle(isOn: Binding(
+                        get: { morningBriefService.isBriefEnabled },
+                        set: { morningBriefService.isBriefEnabled = $0 }
+                    )) {
+                        Label("Morning Brief", systemImage: "sun.max.fill")
+                    }
+
+                    if morningBriefService.isBriefEnabled {
+                        // Brief Time Picker
+                        Picker(selection: Binding(
+                            get: { morningBriefService.briefHour },
+                            set: { morningBriefService.briefHour = $0 }
+                        )) {
+                            ForEach(5..<12, id: \.self) { hour in
+                                Text(formatHour(hour)).tag(hour)
+                            }
+                        } label: {
+                            Label("Weekday Time", systemImage: "clock")
+                        }
+
+                        // Weekend Time Toggle
+                        Toggle(isOn: Binding(
+                            get: { morningBriefService.useWeekendTime },
+                            set: { morningBriefService.useWeekendTime = $0 }
+                        )) {
+                            Label("Different Weekend Time", systemImage: "bed.double")
+                        }
+
+                        // Weekend Time Picker (if enabled)
+                        if morningBriefService.useWeekendTime {
+                            Picker(selection: Binding(
+                                get: { morningBriefService.weekendBriefHour },
+                                set: { morningBriefService.weekendBriefHour = $0 }
+                            )) {
+                                ForEach(5..<14, id: \.self) { hour in
+                                    Text(formatHour(hour)).tag(hour)
+                                }
+                            } label: {
+                                Label("Weekend Time", systemImage: "clock")
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Morning Brief")
+                } footer: {
+                    Text("Get a daily overview of your tasks each morning with top priorities and schedule preview")
+                }
+
                 // Feedback Section
                 Section {
                     Toggle(isOn: $hapticsEnabled) {
@@ -105,10 +241,21 @@ struct SettingsView: View {
                     Toggle(isOn: $aiTaskPreview) {
                         Label("Task Preview", systemImage: "eye")
                     }
+
+                    NavigationLink {
+                        MemoryView()
+                    } label: {
+                        HStack {
+                            Label("AI Memory", systemImage: "brain")
+                            Spacer()
+                            Text("\(memoryItemCount) items")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 } header: {
                     Text("AI Assistant")
                 } footer: {
-                    Text("Show a preview card after creating tasks via AI, allowing you to edit or undo")
+                    Text("Task Preview shows a card after creating tasks via AI. Memory stores context the AI learns about you.")
                 }
 
                 // Data Section
@@ -149,6 +296,9 @@ struct SettingsView: View {
             .sheet(isPresented: $showingExportSheet) {
                 ExportDataView()
             }
+            .fullScreenCover(isPresented: $showingWeeklyReview) {
+                WeeklyReviewFlowView()
+            }
             .alert("Notifications Disabled", isPresented: $showingPermissionAlert) {
                 Button("Open Settings", role: .none) {
                     openAppSettings()
@@ -159,9 +309,11 @@ struct SettingsView: View {
             }
             .task {
                 await loadNotificationStatus()
+                await loadMemoryCount()
             }
             .refreshable {
                 await loadNotificationStatus()
+                await loadMemoryCount()
             }
     }
 
@@ -254,6 +406,15 @@ struct SettingsView: View {
         pendingNotificationCount = await notificationManager.getPendingNotificationCount()
     }
 
+    @MainActor
+    private func loadMemoryCount() async {
+        do {
+            memoryItemCount = try ContextService.shared.fetchContextCount()
+        } catch {
+            memoryItemCount = 0
+        }
+    }
+
     private func openAppSettings() {
         guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else {
             return
@@ -262,6 +423,17 @@ struct SettingsView: View {
         if UIApplication.shared.canOpenURL(settingsURL) {
             UIApplication.shared.open(settingsURL)
         }
+    }
+
+    private func formatHour(_ hour: Int) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h a"
+        var components = DateComponents()
+        components.hour = hour
+        if let date = Calendar.current.date(from: components) {
+            return formatter.string(from: date)
+        }
+        return "\(hour):00"
     }
 }
 

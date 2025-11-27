@@ -47,6 +47,23 @@ struct AIChatView: View {
                     ScrollViewReader { proxy in
                         ScrollView {
                             LazyVStack(spacing: 16) {
+                                // Proactive suggestion banner (at top of chat)
+                                if let suggestion = viewModel.proactiveSuggestion {
+                                    ProactiveSuggestionBanner(
+                                        suggestion: suggestion,
+                                        onAction: {
+                                            viewModel.handleProactiveSuggestionAction(suggestion)
+                                        },
+                                        onDismiss: {
+                                            viewModel.dismissProactiveSuggestion(suggestion)
+                                        },
+                                        onSnooze: {
+                                            viewModel.snoozeProactiveSuggestion(suggestion)
+                                        }
+                                    )
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                                }
+
                                 ForEach(viewModel.messages) { message in
                                     // Don't show empty assistant messages (placeholder during streaming)
                                     if !message.content.isEmpty {
@@ -165,6 +182,10 @@ struct AIChatView: View {
                         )
                     }
                 }
+            }
+            .task {
+                // Load proactive suggestions on view appear
+                await viewModel.loadProactiveSuggestion()
             }
         }
     }

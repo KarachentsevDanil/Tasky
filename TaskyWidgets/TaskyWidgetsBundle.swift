@@ -13,5 +13,9 @@ struct TaskyWidgetsBundle: WidgetBundle {
     var body: some Widget {
         // Focus Timer Live Activity (Dynamic Island)
         FocusTimerLiveActivity()
+
+        // Static Home Screen Widgets
+        TodayTasksWidget()
+        NextTaskWidget()
     }
 }

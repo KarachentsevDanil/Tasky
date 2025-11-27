@@ -13,7 +13,10 @@ struct ContentView: View {
     // MARK: - State
     @StateObject private var viewModel = TaskListViewModel()
     @StateObject private var focusTimerViewModel = FocusTimerViewModel.shared
+    @StateObject private var morningBriefService = MorningBriefService.shared
     @State private var selectedTab = 0
+    @State private var showMorningBrief = false
+    @State private var hasCheckedMorningBrief = false
     @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system
 
     // MARK: - Body
@@ -24,7 +27,32 @@ struct ContentView: View {
                     FocusTimerSheet(viewModel: focusTimerViewModel, task: task)
                 }
             }
+            .fullScreenCover(isPresented: $showMorningBrief) {
+                MorningBriefView {
+                    showMorningBrief = false
+                }
+            }
             .preferredColorScheme(appearanceMode.colorScheme)
+            .task {
+                // Check if morning brief should be shown on first app open of day
+                if !hasCheckedMorningBrief {
+                    hasCheckedMorningBrief = true
+                    checkMorningBrief()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenMorningBrief"))) { _ in
+                showMorningBrief = true
+            }
+    }
+
+    // MARK: - Morning Brief Check
+    private func checkMorningBrief() {
+        // Small delay to let the app settle before showing modal
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if morningBriefService.shouldShowBrief() {
+                showMorningBrief = true
+            }
+        }
     }
 
     // MARK: - Main Tab View

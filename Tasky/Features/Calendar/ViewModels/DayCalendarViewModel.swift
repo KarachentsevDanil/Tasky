@@ -27,11 +27,14 @@ final class DayCalendarViewModel: ObservableObject {
     @Published var scheduleSheetStartTime: Date?
     @Published var scheduleSheetEndTime: Date?
     @Published var allTasks: [TaskEntity] = []
+    @Published var externalEvents: [ExternalEvent] = []
+    @Published var isLoadingCalendar = false
     @Published var errorMessage: String?
     @Published var showError = false
 
     // MARK: - Dependencies
     private let dataService: DataService
+    private let calendarService: CalendarService
     private let layoutEngine = EventLayoutEngine()
 
     // MARK: - Constants
@@ -52,9 +55,45 @@ final class DayCalendarViewModel: ObservableObject {
     }
 
     // MARK: - Initialization
-    init(dataService: DataService, selectedDate: Date = Date()) {
+    init(
+        dataService: DataService,
+        calendarService: CalendarService = .shared,
+        selectedDate: Date = Date()
+    ) {
         self.dataService = dataService
+        self.calendarService = calendarService
         self.selectedDate = selectedDate
+    }
+
+    // MARK: - External Events
+
+    /// Load external calendar events for the selected date
+    func loadExternalEvents() async {
+        guard calendarService.permissionStatus.hasAccess else {
+            externalEvents = []
+            return
+        }
+
+        isLoadingCalendar = true
+        defer { isLoadingCalendar = false }
+
+        do {
+            let events = try await calendarService.fetchEventsForDay(selectedDate)
+            externalEvents = events.filter { !$0.isAllDay } // Only show timed events in day view
+        } catch {
+            print("Failed to load calendar events: \(error)")
+            externalEvents = []
+        }
+    }
+
+    /// Check if calendar permission is available
+    var hasCalendarAccess: Bool {
+        calendarService.permissionStatus.hasAccess
+    }
+
+    /// Request calendar access
+    func requestCalendarAccess() async -> Bool {
+        await calendarService.requestAccess()
     }
 
     // MARK: - Event Layout
@@ -65,6 +104,20 @@ final class DayCalendarViewModel: ObservableObject {
             startHour: startHour
         )
         return layoutEngine.layoutTasks(scheduledTasks, config: config)
+    }
+
+    /// Layout external calendar events
+    func layoutExternalEvents(in width: CGFloat) -> [ExternalEventLayout] {
+        externalEvents.map { event in
+            let startY = yPositionFromTime(event.startDate)
+            let endY = yPositionFromTime(event.endDate)
+            let height = max(20, endY - startY) // Minimum 20pt height
+
+            return ExternalEventLayout(
+                event: event,
+                frame: CGRect(x: 0, y: startY, width: width, height: height)
+            )
+        }
     }
 
     // MARK: - Time Calculations

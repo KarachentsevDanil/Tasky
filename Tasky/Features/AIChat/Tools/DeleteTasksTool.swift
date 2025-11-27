@@ -26,6 +26,9 @@ struct DeleteTasksTool: Tool {
 
         @Guide(description: "Set to true to confirm deletion of 3+ tasks. Required for bulk delete.")
         let confirmed: Bool?
+
+        @Guide(description: "Set to true to delete ALL tasks matching the filter. Use with extreme caution.")
+        let deleteAll: Bool?
     }
 
     func call(arguments: Arguments) async throws -> GeneratedContent {
@@ -36,10 +39,24 @@ struct DeleteTasksTool: Tool {
 
     @MainActor
     private func executeDelete(arguments: Arguments) async throws -> String {
+        let deleteAll = arguments.deleteAll ?? false
+        let confirmed = arguments.confirmed ?? false
+
+        // If deleteAll is requested, require explicit confirmation
+        if deleteAll && !confirmed {
+            let allTasks = try? dataService.fetchAllTasks()
+            let count = allTasks?.count ?? 0
+            return "⚠️ This will permanently delete ALL \(count) tasks. This action cannot be undone.\n\nSay \"delete all tasks, confirm\" to proceed."
+        }
+
         // Fetch tasks matching filter
         let tasks: [TaskEntity]
         do {
-            tasks = try AIToolHelpers.fetchTasksMatching(arguments.filter, dataService: dataService)
+            if deleteAll {
+                tasks = (try? dataService.fetchAllTasks()) ?? []
+            } else {
+                tasks = try AIToolHelpers.fetchTasksMatching(arguments.filter, dataService: dataService)
+            }
         } catch {
             return "Could not find tasks matching your criteria."
         }
@@ -49,7 +66,6 @@ struct DeleteTasksTool: Tool {
         }
 
         let taskTitles = tasks.map { $0.title }
-        let confirmed = arguments.confirmed ?? false
 
         // Require confirmation for bulk deletes (3+ tasks)
         if tasks.count >= 3 && !confirmed {

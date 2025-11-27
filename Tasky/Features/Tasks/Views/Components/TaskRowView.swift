@@ -14,17 +14,34 @@ struct TaskRowView: View {
     // MARK: - Properties
     let task: TaskEntity
     let onToggleCompletion: () -> Void
+    var isMultiSelectMode: Bool = false
+    var isSelected: Bool = false
+    var onSelect: (() -> Void)?
 
     // MARK: - Body
     var body: some View {
         HStack(spacing: Constants.UI.padding) {
-            // Completion button
-            Button(action: onToggleCompletion) {
-                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.title2)
-                    .foregroundStyle(task.isCompleted ? .green : .gray)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .contentShape(Rectangle())
+            // Completion/Selection button
+            Button(action: {
+                if isMultiSelectMode {
+                    onSelect?()
+                } else {
+                    onToggleCompletion()
+                }
+            }) {
+                if isMultiSelectMode {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(isSelected ? Color.accentColor : .gray)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                } else {
+                    Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(task.isCompleted ? .green : .gray)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
             }
             .buttonStyle(.plain)
 
@@ -35,13 +52,18 @@ struct TaskRowView: View {
                     .strikethrough(task.isCompleted)
                     .foregroundStyle(task.isCompleted ? .secondary : .primary)
 
-                // Task metadata
+                // Task metadata row
                 HStack(spacing: Constants.UI.smallPadding) {
                     // Due date
                     if let formattedDate = task.formattedDueDate {
                         Label(formattedDate, systemImage: "calendar")
                             .font(.caption)
                             .foregroundStyle(task.isOverdue ? .red : .secondary)
+                    }
+
+                    // Subtask progress
+                    if task.hasSubtasks {
+                        SubtaskIndicator(task: task)
                     }
 
                     // List name
@@ -60,17 +82,32 @@ struct TaskRowView: View {
                         .font(.caption)
                         .foregroundStyle(priority.color)
                     }
+
+                    // Recurrence indicator
+                    if task.isRecurring {
+                        Image(systemName: "repeat")
+                            .font(.caption)
+                            .foregroundStyle(.purple)
+                    }
+                }
+
+                // Tags row
+                if task.hasTags {
+                    TagPillsRow(tags: task.tagsArray, maxVisible: 2)
                 }
             }
 
             Spacer()
 
-            // Chevron for navigation
-            Image(systemName: Constants.Icons.chevronRight)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+            // Chevron for navigation (hide in multi-select)
+            if !isMultiSelectMode {
+                Image(systemName: Constants.Icons.chevronRight)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(.vertical, Constants.UI.smallPadding)
+        .background(isSelected && isMultiSelectMode ? Color.accentColor.opacity(0.1) : Color.clear)
     }
 }
 

@@ -30,8 +30,19 @@ extension TaskEntity {
     @NSManaged var estimatedDuration: Int16
     @NSManaged var isRecurring: Bool
     @NSManaged var recurrenceDays: String?
+    @NSManaged var recurrenceType: String?
+    @NSManaged var recurrenceInterval: Int16
+    @NSManaged var recurrenceDayOfMonth: Int16
+    @NSManaged var recurrenceWeekdayOrdinal: Int16
+    @NSManaged var recurrenceEndDate: Date?
+    @NSManaged var recurrenceCount: Int16
+    @NSManaged var completedOccurrences: Int16
+    @NSManaged var rescheduleCount: Int16
     @NSManaged var taskList: TaskListEntity?
     @NSManaged var focusSessions: NSSet?
+    @NSManaged var goals: NSSet?
+    @NSManaged var tags: NSSet?
+    @NSManaged var subtasks: NSSet?
 
 }
 
@@ -55,6 +66,115 @@ extension TaskEntity {
     @objc(removeFocusSessions:)
     @NSManaged func removeFromFocusSessions(_ values: NSSet)
 
+}
+
+// MARK: - Generated accessors for goals
+extension TaskEntity {
+
+    @objc(addGoalsObject:)
+    @NSManaged func addToGoals(_ value: GoalEntity)
+
+    @objc(removeGoalsObject:)
+    @NSManaged func removeFromGoals(_ value: GoalEntity)
+
+    @objc(addGoals:)
+    @NSManaged func addToGoals(_ values: NSSet)
+
+    @objc(removeGoals:)
+    @NSManaged func removeFromGoals(_ values: NSSet)
+
+    /// Get linked goals as array
+    var linkedGoals: [GoalEntity] {
+        guard let goals = goals as? Set<GoalEntity> else { return [] }
+        return Array(goals).sorted { $0.name < $1.name }
+    }
+
+    /// Check if task is linked to any goal
+    var hasGoals: Bool {
+        !linkedGoals.isEmpty
+    }
+
+}
+
+// MARK: - Generated accessors for tags
+extension TaskEntity {
+
+    @objc(addTagsObject:)
+    @NSManaged func addToTags(_ value: TagEntity)
+
+    @objc(removeTagsObject:)
+    @NSManaged func removeFromTags(_ value: TagEntity)
+
+    @objc(addTags:)
+    @NSManaged func addToTags(_ values: NSSet)
+
+    @objc(removeTags:)
+    @NSManaged func removeFromTags(_ values: NSSet)
+
+    /// Get tags as sorted array
+    var tagsArray: [TagEntity] {
+        let set = tags as? Set<TagEntity> ?? []
+        return set.sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    /// Check if task has any tags
+    var hasTags: Bool {
+        !tagsArray.isEmpty
+    }
+}
+
+// MARK: - Generated accessors for subtasks
+extension TaskEntity {
+
+    @objc(addSubtasksObject:)
+    @NSManaged func addToSubtasks(_ value: SubtaskEntity)
+
+    @objc(removeSubtasksObject:)
+    @NSManaged func removeFromSubtasks(_ value: SubtaskEntity)
+
+    @objc(addSubtasks:)
+    @NSManaged func addToSubtasks(_ values: NSSet)
+
+    @objc(removeSubtasks:)
+    @NSManaged func removeFromSubtasks(_ values: NSSet)
+
+    /// Get subtasks as sorted array
+    var subtasksArray: [SubtaskEntity] {
+        let set = subtasks as? Set<SubtaskEntity> ?? []
+        return set.sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    /// Check if task has any subtasks
+    var hasSubtasks: Bool {
+        !subtasksArray.isEmpty
+    }
+
+    /// Get subtask progress as tuple (completed, total)
+    var subtasksProgress: (completed: Int, total: Int) {
+        let array = subtasksArray
+        let completed = array.filter { $0.isCompleted }.count
+        return (completed: completed, total: array.count)
+    }
+
+    /// Get formatted subtask progress string (e.g., "3/7")
+    var subtasksProgressString: String? {
+        let progress = subtasksProgress
+        guard progress.total > 0 else { return nil }
+        return "\(progress.completed)/\(progress.total)"
+    }
+
+    /// Check if all subtasks are completed
+    var allSubtasksCompleted: Bool {
+        let progress = subtasksProgress
+        return progress.total > 0 && progress.completed == progress.total
+    }
+
+    /// Get subtask completion percentage (0.0 to 1.0)
+    var subtasksCompletionPercentage: Double {
+        let progress = subtasksProgress
+        guard progress.total > 0 else { return 0 }
+        return Double(progress.completed) / Double(progress.total)
+    }
 }
 
 // MARK: - Convenience Methods
@@ -174,6 +294,11 @@ extension TaskEntity {
     /// Check if task is a quick win (< 15 minutes)
     var isQuickWin: Bool {
         return estimatedDuration > 0 && estimatedDuration <= 15
+    }
+
+    /// Check if task is stuck (rescheduled 3+ times)
+    var isStuck: Bool {
+        return rescheduleCount >= 3 && !isCompleted
     }
 
     /// Get staleness in days (how many days since created)

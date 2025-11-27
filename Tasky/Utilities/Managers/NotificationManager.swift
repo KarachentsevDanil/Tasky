@@ -26,6 +26,7 @@ class NotificationManager: NSObject, ObservableObject {
     private enum Category: String {
         case task = "TASK_NOTIFICATION"
         case timer = "TIMER_NOTIFICATION"
+        case morningBrief = "MORNING_BRIEF"
     }
 
     // MARK: - Notification Actions
@@ -33,6 +34,8 @@ class NotificationManager: NSObject, ObservableObject {
         case complete = "COMPLETE_ACTION"
         case snooze = "SNOOZE_ACTION"
         case startFocus = "START_FOCUS_ACTION"
+        case viewBrief = "VIEW_BRIEF_ACTION"
+        case skipBrief = "SKIP_BRIEF_ACTION"
     }
 
     // MARK: - Initialization
@@ -249,7 +252,27 @@ class NotificationManager: NSObject, ObservableObject {
             options: []
         )
 
-        center.setNotificationCategories([taskCategory, timerCategory])
+        // Morning brief notification actions
+        let viewBriefAction = UNNotificationAction(
+            identifier: Action.viewBrief.rawValue,
+            title: "View Brief",
+            options: [.foreground]
+        )
+
+        let skipBriefAction = UNNotificationAction(
+            identifier: Action.skipBrief.rawValue,
+            title: "Skip",
+            options: []
+        )
+
+        let morningBriefCategory = UNNotificationCategory(
+            identifier: Category.morningBrief.rawValue,
+            actions: [viewBriefAction, skipBriefAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        center.setNotificationCategories([taskCategory, timerCategory, morningBriefCategory])
     }
 }
 
@@ -283,6 +306,12 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
 
         case Action.startFocus.rawValue:
             handleStartFocusAction(userInfo: userInfo)
+
+        case Action.viewBrief.rawValue:
+            handleViewBriefAction()
+
+        case Action.skipBrief.rawValue:
+            handleSkipBriefAction()
 
         case UNNotificationDefaultActionIdentifier:
             // User tapped the notification
@@ -352,6 +381,24 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
                 name: NSNotification.Name("OpenTimerFromNotification"),
                 object: nil
             )
+        } else if userInfo["type"] as? String == "morning-brief" {
+            print("👆 Morning brief notification tapped")
+            handleViewBriefAction()
+        }
+    }
+
+    private func handleViewBriefAction() {
+        print("📋 View morning brief action")
+        NotificationCenter.default.post(
+            name: NSNotification.Name("OpenMorningBrief"),
+            object: nil
+        )
+    }
+
+    private func handleSkipBriefAction() {
+        print("⏭️ Skip morning brief action")
+        Task { @MainActor in
+            MorningBriefService.shared.skipBriefForToday()
         }
     }
 }

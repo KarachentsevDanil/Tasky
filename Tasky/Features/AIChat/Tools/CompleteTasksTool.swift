@@ -14,9 +14,11 @@ struct CompleteTasksTool: Tool {
     let description = "Mark tasks as done. Triggers: done, finished, complete, check off, mark done, all done."
 
     let dataService: DataService
+    let contextService: ContextService
 
-    init(dataService: DataService = DataService()) {
+    init(dataService: DataService = DataService(), contextService: ContextService = .shared) {
         self.dataService = dataService
+        self.contextService = contextService
     }
 
     @Generable
@@ -81,6 +83,11 @@ struct CompleteTasksTool: Tool {
             // Haptic feedback
             HapticManager.shared.success()
 
+            // Track completion patterns for context learning
+            if completed {
+                await trackCompletionPatterns(tasksToChange)
+            }
+
             // Format response
             let action = completed ? "Completed" : "Reopened"
             if count == 1 {
@@ -94,5 +101,76 @@ struct CompleteTasksTool: Tool {
             HapticManager.shared.error()
             return "Failed to complete tasks. Please try again."
         }
+    }
+
+    // MARK: - Pattern Tracking
+
+    /// Track task completion patterns for context learning
+    @MainActor
+    private func trackCompletionPatterns(_ tasks: [TaskEntity]) async {
+        let now = Date()
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: now)
+        let weekday = calendar.component(.weekday, from: now)
+
+        // Track hourly completion pattern
+        do {
+            let hourKey = "completion_hour_\(hour)"
+            if let existing = try contextService.fetchContext(category: .pattern, key: hourKey) {
+                // Increment data points in metadata
+                var metadata = existing.metadataDict ?? [:]
+                let dataPoints = (metadata["dataPoints"] as? Int ?? 0) + tasks.count
+                metadata["dataPoints"] = dataPoints
+                metadata["lastObserved"] = ISO8601DateFormatter().string(from: now)
+                existing.setMetadata(metadata)
+                try contextService.reinforceContext(existing)
+            } else {
+                let metadata: [String: Any] = [
+                    "patternType": "productivityPeak",
+                    "dataPoints": tasks.count,
+                    "lastObserved": ISO8601DateFormatter().string(from: now)
+                ]
+                try contextService.saveContext(
+                    category: .pattern,
+                    key: hourKey,
+                    value: "Completes tasks around \(hour):00",
+                    source: .inferred,
+                    metadata: metadata
+                )
+            }
+        } catch {
+            print("⚠️ Failed to track hourly completion pattern: \(error)")
+        }
+
+        // Track weekday completion pattern
+        do {
+            let weekdayNames = ["", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+            let dayKey = "completion_day_\(weekday)"
+            if let existing = try contextService.fetchContext(category: .pattern, key: dayKey) {
+                var metadata = existing.metadataDict ?? [:]
+                let dataPoints = (metadata["dataPoints"] as? Int ?? 0) + tasks.count
+                metadata["dataPoints"] = dataPoints
+                metadata["lastObserved"] = ISO8601DateFormatter().string(from: now)
+                existing.setMetadata(metadata)
+                try contextService.reinforceContext(existing)
+            } else {
+                let metadata: [String: Any] = [
+                    "patternType": "completionHabit",
+                    "dataPoints": tasks.count,
+                    "lastObserved": ISO8601DateFormatter().string(from: now)
+                ]
+                try contextService.saveContext(
+                    category: .pattern,
+                    key: dayKey,
+                    value: "Active on \(weekdayNames[weekday])s",
+                    source: .inferred,
+                    metadata: metadata
+                )
+            }
+        } catch {
+            print("⚠️ Failed to track weekday completion pattern: \(error)")
+        }
+
+        print("🧠 ContextStore: Tracked completion patterns for \(tasks.count) task(s)")
     }
 }

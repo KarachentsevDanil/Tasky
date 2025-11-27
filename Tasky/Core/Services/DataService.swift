@@ -7,6 +7,7 @@
 
 internal import CoreData
 import Foundation
+import WidgetKit
 
 /// Service layer for data operations
 class DataService {
@@ -20,6 +21,13 @@ class DataService {
     // MARK: - Initialization
     init(persistenceController: PersistenceController = .shared) {
         self.persistenceController = persistenceController
+    }
+
+    // MARK: - Widget Refresh
+
+    /// Notify widgets to refresh their data
+    private func refreshWidgets() {
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: - Task Operations
@@ -63,6 +71,9 @@ class DataService {
         task.aiPriorityScore = calculateAIPriorityScore(for: task)
 
         try persistenceController.save(context: viewContext)
+
+        // Refresh widgets to show new task
+        refreshWidgets()
 
         // Schedule notifications for the task
         Task { @MainActor in
@@ -116,6 +127,9 @@ class DataService {
 
         try persistenceController.save(context: viewContext)
 
+        // Refresh widgets
+        refreshWidgets()
+
         // Reschedule notifications if dates changed
         if dueDate != nil || scheduledTime != nil || scheduledEndTime != nil {
             Task { @MainActor in
@@ -132,6 +146,9 @@ class DataService {
 
         try persistenceController.save(context: viewContext)
 
+        // Refresh widgets
+        refreshWidgets()
+
         // Cancel notifications when task is completed
         if task.isCompleted {
             NotificationManager.shared.cancelTaskNotifications(taskId: task.id)
@@ -145,6 +162,9 @@ class DataService {
 
         viewContext.delete(task)
         try persistenceController.save(context: viewContext)
+
+        // Refresh widgets
+        refreshWidgets()
     }
 
     /// Delete a task by its UUID
@@ -496,6 +516,7 @@ class DataService {
             }
         }
         try persistenceController.save(context: viewContext)
+        refreshWidgets()
         return count
     }
 
@@ -507,6 +528,9 @@ class DataService {
             if let time = time {
                 task.scheduledTime = time
             }
+            // Increment reschedule count for stuck task tracking
+            task.rescheduleCount += 1
+
             // Recalculate AI priority score
             task.aiPriorityScore = calculateAIPriorityScore(for: task)
 
@@ -524,6 +548,7 @@ class DataService {
             }
         }
         try persistenceController.save(context: viewContext)
+        refreshWidgets()
         return tasks.count
     }
 
@@ -536,6 +561,7 @@ class DataService {
             viewContext.delete(task)
         }
         try persistenceController.save(context: viewContext)
+        refreshWidgets()
         return count
     }
 
@@ -547,6 +573,7 @@ class DataService {
             task.aiPriorityScore = calculateAIPriorityScore(for: task)
         }
         try persistenceController.save(context: viewContext)
+        refreshWidgets()
         return tasks.count
     }
 
@@ -557,6 +584,7 @@ class DataService {
             task.taskList = list
         }
         try persistenceController.save(context: viewContext)
+        refreshWidgets()
         return tasks.count
     }
 
@@ -805,16 +833,420 @@ class DataService {
 
         return stats
     }
+
+    // MARK: - Goal Operations
+
+    /// Create a new goal
+    @discardableResult
+    func createGoal(
+        name: String,
+        notes: String? = nil,
+        targetDate: Date? = nil,
+        colorHex: String? = nil,
+        iconName: String? = nil
+    ) throws -> GoalEntity {
+        let goal = GoalEntity(context: viewContext)
+        goal.id = UUID()
+        goal.name = name
+        goal.notes = notes
+        goal.targetDate = targetDate
+        goal.status = GoalStatus.active.rawValue
+        goal.colorHex = colorHex ?? Constants.Colors.defaultListColor
+        goal.iconName = iconName ?? "target"
+        goal.createdAt = Date()
+
+        // Set sort order
+        let existingGoals = try fetchAllGoals()
+        goal.sortOrder = Int16(existingGoals.count)
+
+        try persistenceController.save(context: viewContext)
+        return goal
+    }
+
+    /// Update an existing goal
+    func updateGoal(
+        _ goal: GoalEntity,
+        name: String? = nil,
+        notes: String? = nil,
+        targetDate: Date? = nil,
+        colorHex: String? = nil,
+        iconName: String? = nil,
+        status: GoalStatus? = nil
+    ) throws {
+        if let name = name {
+            goal.name = name
+        }
+        if let notes = notes {
+            goal.notes = notes
+        }
+        if let targetDate = targetDate {
+            goal.targetDate = targetDate
+        }
+        if let colorHex = colorHex {
+            goal.colorHex = colorHex
+        }
+        if let iconName = iconName {
+            goal.iconName = iconName
+        }
+        if let status = status {
+            goal.status = status.rawValue
+            if status == .completed {
+                goal.completedAt = Date()
+            }
+        }
+
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Delete a goal
+    func deleteGoal(_ goal: GoalEntity) throws {
+        viewContext.delete(goal)
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Fetch all goals
+    func fetchAllGoals(includeArchived: Bool = false) throws -> [GoalEntity] {
+        let fetchRequest: NSFetchRequest<GoalEntity> = GoalEntity.fetchRequest()
+
+        if !includeArchived {
+            fetchRequest.predicate = NSPredicate(
+                format: "status != %@ AND status != %@",
+                GoalStatus.completed.rawValue,
+                GoalStatus.abandoned.rawValue
+            )
+        }
+
+        fetchRequest.sortDescriptors = [
+            NSSortDescriptor(keyPath: \GoalEntity.sortOrder, ascending: true)
+        ]
+        return try viewContext.fetch(fetchRequest)
+    }
+
+    /// Fetch goals by status
+    func fetchGoals(status: GoalStatus) throws -> [GoalEntity] {
+        let fetchRequest: NSFetchRequest<GoalEntity> = GoalEntity.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "status == %@", status.rawValue)
+        fetchRequest.sortDescriptors = [
+            NSSortDescriptor(keyPath: \GoalEntity.sortOrder, ascending: true)
+        ]
+        return try viewContext.fetch(fetchRequest)
+    }
+
+    /// Fetch a goal by ID
+    func fetchGoalById(_ id: UUID) throws -> GoalEntity? {
+        let fetchRequest: NSFetchRequest<GoalEntity> = GoalEntity.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        fetchRequest.fetchLimit = 1
+        return try viewContext.fetch(fetchRequest).first
+    }
+
+    /// Link a task to a goal
+    func linkTaskToGoal(task: TaskEntity, goal: GoalEntity) throws {
+        task.addToGoals(goal)
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Unlink a task from a goal
+    func unlinkTaskFromGoal(task: TaskEntity, goal: GoalEntity) throws {
+        task.removeFromGoals(goal)
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Link multiple tasks to a goal
+    func linkTasksToGoal(tasks: [TaskEntity], goal: GoalEntity) throws {
+        for task in tasks {
+            task.addToGoals(goal)
+        }
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Fetch tasks for a specific goal
+    func fetchTasksForGoal(_ goal: GoalEntity) -> [TaskEntity] {
+        return goal.linkedTasks
+    }
+
+    /// Mark goal as completed
+    func completeGoal(_ goal: GoalEntity) throws {
+        goal.status = GoalStatus.completed.rawValue
+        goal.completedAt = Date()
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Mark goal as abandoned
+    func abandonGoal(_ goal: GoalEntity) throws {
+        goal.status = GoalStatus.abandoned.rawValue
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Reorder goals
+    func reorderGoals(_ goals: [GoalEntity]) throws {
+        for (index, goal) in goals.enumerated() {
+            goal.sortOrder = Int16(index)
+        }
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Get goal count
+    func fetchGoalCount(activeOnly: Bool = true) throws -> Int {
+        let fetchRequest: NSFetchRequest<GoalEntity> = GoalEntity.fetchRequest()
+        if activeOnly {
+            fetchRequest.predicate = NSPredicate(format: "status == %@", GoalStatus.active.rawValue)
+        }
+        return try viewContext.count(for: fetchRequest)
+    }
+
+    // MARK: - Tag Operations
+
+    /// Create a new tag
+    @discardableResult
+    func createTag(name: String, colorHex: String? = nil) throws -> TagEntity {
+        let tag = TagEntity(context: viewContext)
+        tag.id = UUID()
+        tag.name = name
+        tag.colorHex = colorHex ?? Constants.Colors.defaultListColor
+        tag.createdAt = Date()
+
+        // Set sort order
+        let existingTags = try fetchAllTags()
+        tag.sortOrder = Int16(existingTags.count)
+
+        try persistenceController.save(context: viewContext)
+        return tag
+    }
+
+    /// Update an existing tag
+    func updateTag(_ tag: TagEntity, name: String? = nil, colorHex: String? = nil) throws {
+        if let name = name {
+            tag.name = name
+        }
+        if let colorHex = colorHex {
+            tag.colorHex = colorHex
+        }
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Delete a tag
+    func deleteTag(_ tag: TagEntity) throws {
+        viewContext.delete(tag)
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Fetch all tags
+    func fetchAllTags() throws -> [TagEntity] {
+        let fetchRequest: NSFetchRequest<TagEntity> = TagEntity.fetchRequest()
+        fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \TagEntity.sortOrder, ascending: true)]
+        return try viewContext.fetch(fetchRequest)
+    }
+
+    /// Fetch a tag by ID
+    func fetchTagById(_ id: UUID) throws -> TagEntity? {
+        let fetchRequest: NSFetchRequest<TagEntity> = TagEntity.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        fetchRequest.fetchLimit = 1
+        return try viewContext.fetch(fetchRequest).first
+    }
+
+    /// Fetch a tag by name
+    func fetchTagByName(_ name: String) throws -> TagEntity? {
+        let fetchRequest: NSFetchRequest<TagEntity> = TagEntity.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "name ==[c] %@", name)
+        fetchRequest.fetchLimit = 1
+        return try viewContext.fetch(fetchRequest).first
+    }
+
+    /// Add a tag to a task
+    func addTag(_ tag: TagEntity, to task: TaskEntity) throws {
+        task.addToTags(tag)
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Remove a tag from a task
+    func removeTag(_ tag: TagEntity, from task: TaskEntity) throws {
+        task.removeFromTags(tag)
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Set tags for a task (replaces all existing tags)
+    func setTags(_ tags: [TagEntity], for task: TaskEntity) throws {
+        // Remove all existing tags
+        if let existingTags = task.tags {
+            task.removeFromTags(existingTags)
+        }
+        // Add new tags
+        for tag in tags {
+            task.addToTags(tag)
+        }
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Fetch tasks with a specific tag
+    func fetchTasks(withTag tag: TagEntity) throws -> [TaskEntity] {
+        return tag.tasksArray
+    }
+
+    /// Reorder tags
+    func reorderTags(_ tags: [TagEntity]) throws {
+        for (index, tag) in tags.enumerated() {
+            tag.sortOrder = Int16(index)
+        }
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Bulk add tag to multiple tasks
+    @discardableResult
+    func addTagToTasks(_ tag: TagEntity, tasks: [TaskEntity]) throws -> Int {
+        for task in tasks {
+            task.addToTags(tag)
+        }
+        try persistenceController.save(context: viewContext)
+        return tasks.count
+    }
+
+    /// Bulk remove tag from multiple tasks
+    @discardableResult
+    func removeTagFromTasks(_ tag: TagEntity, tasks: [TaskEntity]) throws -> Int {
+        for task in tasks {
+            task.removeFromTags(tag)
+        }
+        try persistenceController.save(context: viewContext)
+        return tasks.count
+    }
+
+    // MARK: - Subtask Operations
+
+    /// Create a new subtask for a task
+    @discardableResult
+    func createSubtask(title: String, for task: TaskEntity) throws -> SubtaskEntity {
+        let subtask = SubtaskEntity(context: viewContext)
+        subtask.id = UUID()
+        subtask.title = title
+        subtask.isCompleted = false
+        subtask.createdAt = Date()
+        subtask.parentTask = task
+
+        // Set sort order
+        let existingSubtasks = task.subtasksArray
+        subtask.sortOrder = Int16(existingSubtasks.count)
+
+        try persistenceController.save(context: viewContext)
+        return subtask
+    }
+
+    /// Update a subtask title
+    func updateSubtask(_ subtask: SubtaskEntity, title: String) throws {
+        subtask.title = title
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Toggle subtask completion
+    func toggleSubtaskCompletion(_ subtask: SubtaskEntity) throws {
+        subtask.isCompleted.toggle()
+        subtask.completedAt = subtask.isCompleted ? Date() : nil
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Delete a subtask
+    func deleteSubtask(_ subtask: SubtaskEntity) throws {
+        viewContext.delete(subtask)
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Reorder subtasks for a task
+    func reorderSubtasks(_ subtasks: [SubtaskEntity]) throws {
+        for (index, subtask) in subtasks.enumerated() {
+            subtask.sortOrder = Int16(index)
+        }
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Complete all subtasks for a task
+    func completeAllSubtasks(for task: TaskEntity) throws {
+        for subtask in task.subtasksArray where !subtask.isCompleted {
+            subtask.isCompleted = true
+            subtask.completedAt = Date()
+        }
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Delete all subtasks for a task
+    func deleteAllSubtasks(for task: TaskEntity) throws {
+        for subtask in task.subtasksArray {
+            viewContext.delete(subtask)
+        }
+        try persistenceController.save(context: viewContext)
+    }
+
+    /// Create multiple subtasks at once
+    @discardableResult
+    func createSubtasks(titles: [String], for task: TaskEntity) throws -> [SubtaskEntity] {
+        var subtasks: [SubtaskEntity] = []
+        let startOrder = Int16(task.subtasksArray.count)
+
+        for (index, title) in titles.enumerated() {
+            let subtask = SubtaskEntity(context: viewContext)
+            subtask.id = UUID()
+            subtask.title = title
+            subtask.isCompleted = false
+            subtask.createdAt = Date()
+            subtask.parentTask = task
+            subtask.sortOrder = startOrder + Int16(index)
+            subtasks.append(subtask)
+        }
+
+        try persistenceController.save(context: viewContext)
+        return subtasks
+    }
+
+    /// Convert a subtask to a standalone task
+    @discardableResult
+    func convertSubtaskToTask(_ subtask: SubtaskEntity) throws -> TaskEntity {
+        let parentTask = subtask.parentTask
+
+        // Create new task with subtask info
+        let newTask = try createTask(
+            title: subtask.title,
+            dueDate: parentTask.dueDate,
+            priority: parentTask.priority,
+            list: parentTask.taskList
+        )
+
+        // Copy tags from parent
+        if let parentTags = parentTask.tags as? Set<TagEntity> {
+            for tag in parentTags {
+                newTask.addToTags(tag)
+            }
+        }
+
+        // Delete the subtask
+        try deleteSubtask(subtask)
+
+        return newTask
+    }
+
+    // MARK: - Bulk Operations
+
+    /// Complete multiple tasks at once
+    func completeTasks(_ tasks: [TaskEntity]) throws {
+        for task in tasks {
+            task.isCompleted = true
+            task.completedAt = Date()
+        }
+        try persistenceController.save(context: viewContext)
+    }
+
 }
 
 // MARK: - Errors
 enum DataServiceError: LocalizedError {
     case maxListsReached
+    case maxGoalsReached
 
     var errorDescription: String? {
         switch self {
         case .maxListsReached:
             return "Maximum number of lists (\(Constants.Limits.maxCustomLists)) reached"
+        case .maxGoalsReached:
+            return "Maximum number of goals reached"
         }
     }
 }

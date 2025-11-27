@@ -69,7 +69,10 @@ struct DayCalendarView: View {
                                 }
                             )
 
-                            // Events overlay
+                            // External calendar events (background layer)
+                            externalEventsOverlay(containerWidth: geometry.size.width)
+
+                            // Task events overlay (foreground layer)
                             eventsOverlay(containerWidth: geometry.size.width)
 
                             // Current time indicator (only for today)
@@ -149,8 +152,14 @@ struct DayCalendarView: View {
         .onChange(of: taskListViewModel.tasks) { _, newTasks in
             viewModel.allTasks = newTasks
         }
-        .onAppear {
+        .onChange(of: viewModel.selectedDate) { _, _ in
+            Task {
+                await viewModel.loadExternalEvents()
+            }
+        }
+        .task {
             viewModel.allTasks = taskListViewModel.tasks
+            await viewModel.loadExternalEvents()
         }
     }
 
@@ -186,6 +195,24 @@ struct DayCalendarView: View {
             .accessibilityLabel("Next day")
         }
         .padding()
+    }
+
+    // MARK: - External Events Overlay
+    @ViewBuilder
+    private func externalEventsOverlay(containerWidth: CGFloat) -> some View {
+        let availableWidth = containerWidth - Layout.timeLabelWidth - Layout.spacing - Layout.dividerWidth - Layout.spacing - (Layout.horizontalPadding * 2)
+        let layouts = viewModel.layoutExternalEvents(in: availableWidth)
+
+        ZStack(alignment: .topLeading) {
+            ForEach(layouts) { layout in
+                ExternalEventView(event: layout.event, layout: layout)
+                    .offset(
+                        x: Layout.timeLabelWidth + Layout.spacing + Layout.dividerWidth + Layout.spacing + Layout.horizontalPadding,
+                        y: layout.frame.minY
+                    )
+            }
+        }
+        .zIndex(1) // Below task events
     }
 
     // MARK: - Events Overlay

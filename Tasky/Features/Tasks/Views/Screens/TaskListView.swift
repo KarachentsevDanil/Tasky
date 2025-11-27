@@ -22,21 +22,51 @@ struct TaskListView: View {
     // MARK: - Body
     var body: some View {
         NavigationStack {
-            ZStack {
+            ZStack(alignment: .bottom) {
                 if viewModel.tasks.isEmpty {
                     emptyStateView
                 } else {
                     taskListView
                 }
+
+                // Bulk action bar
+                if viewModel.isMultiSelectMode {
+                    BulkActionBar(viewModel: viewModel)
+                        .padding(.horizontal)
+                        .padding(.bottom, Constants.Spacing.sm)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
+            .animation(.spring(response: 0.3), value: viewModel.isMultiSelectMode)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showingAddTask = true
-                    } label: {
-                        Image(systemName: Constants.Icons.add)
+                if viewModel.isMultiSelectMode {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            viewModel.exitMultiSelectMode()
+                        }
+                    }
+                } else {
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu {
+                            Button {
+                                showingAddTask = true
+                            } label: {
+                                Label("Add Task", systemImage: Constants.Icons.add)
+                            }
+
+                            if !viewModel.tasks.isEmpty {
+                                Button {
+                                    viewModel.enterMultiSelectMode()
+                                    HapticManager.shared.lightImpact()
+                                } label: {
+                                    Label("Select Multiple", systemImage: "checkmark.circle")
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
                     }
                 }
             }
@@ -64,57 +94,83 @@ struct TaskListView: View {
     private var taskListView: some View {
         List {
             ForEach(viewModel.tasks, id: \.id) { task in
-                NavigationLink {
-                    TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
-                } label: {
-                    TaskRowView(task: task) {
-                        Task {
-                            await viewModel.toggleTaskCompletion(task)
+                if viewModel.isMultiSelectMode {
+                    // Multi-select mode - no navigation
+                    TaskRowView(
+                        task: task,
+                        onToggleCompletion: {},
+                        isMultiSelectMode: true,
+                        isSelected: viewModel.isTaskSelected(task),
+                        onSelect: {
+                            viewModel.toggleTaskSelection(task)
+                            HapticManager.shared.selectionChanged()
                         }
+                    )
+                    .onTapGesture {
+                        viewModel.toggleTaskSelection(task)
+                        HapticManager.shared.selectionChanged()
                     }
-                }
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    Button(role: .destructive) {
-                        Task {
-                            await viewModel.deleteTask(task)
-                        }
+                } else {
+                    // Normal mode with navigation
+                    NavigationLink {
+                        TaskDetailView(viewModel: viewModel, timerViewModel: timerViewModel, task: task)
                     } label: {
-                        Label("Delete", systemImage: Constants.Icons.delete)
-                    }
-                }
-                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                    Button {
-                        Task {
-                            await viewModel.toggleTaskCompletion(task)
+                        TaskRowView(task: task) {
+                            Task {
+                                await viewModel.toggleTaskCompletion(task)
+                            }
                         }
-                    } label: {
-                        Label(
-                            task.isCompleted ? "Incomplete" : "Complete",
-                            systemImage: task.isCompleted ? "circle" : "checkmark.circle.fill"
-                        )
                     }
-                    .tint(.green)
-                }
-                .contextMenu {
-                    Button {
-                        Task {
-                            await viewModel.toggleTaskCompletion(task)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            Task {
+                                await viewModel.deleteTask(task)
+                            }
+                        } label: {
+                            Label("Delete", systemImage: Constants.Icons.delete)
                         }
-                    } label: {
-                        Label(
-                            task.isCompleted ? "Mark as Incomplete" : "Mark as Complete",
-                            systemImage: task.isCompleted ? "circle" : "checkmark.circle"
-                        )
                     }
+                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                        Button {
+                            Task {
+                                await viewModel.toggleTaskCompletion(task)
+                            }
+                        } label: {
+                            Label(
+                                task.isCompleted ? "Incomplete" : "Complete",
+                                systemImage: task.isCompleted ? "circle" : "checkmark.circle.fill"
+                            )
+                        }
+                        .tint(.green)
+                    }
+                    .contextMenu {
+                        Button {
+                            Task {
+                                await viewModel.toggleTaskCompletion(task)
+                            }
+                        } label: {
+                            Label(
+                                task.isCompleted ? "Mark as Incomplete" : "Mark as Complete",
+                                systemImage: task.isCompleted ? "circle" : "checkmark.circle"
+                            )
+                        }
 
-                    Divider()
-
-                    Button(role: .destructive) {
-                        Task {
-                            await viewModel.deleteTask(task)
+                        Button {
+                            viewModel.enterMultiSelectMode()
+                            viewModel.toggleTaskSelection(task)
+                        } label: {
+                            Label("Select Multiple", systemImage: "checkmark.circle")
                         }
-                    } label: {
-                        Label("Delete", systemImage: Constants.Icons.delete)
+
+                        Divider()
+
+                        Button(role: .destructive) {
+                            Task {
+                                await viewModel.deleteTask(task)
+                            }
+                        } label: {
+                            Label("Delete", systemImage: Constants.Icons.delete)
+                        }
                     }
                 }
             }

@@ -21,9 +21,11 @@ struct CreateTasksTool: Tool {
 
     // DataService instance for task creation
     let dataService: DataService
+    let contextService: ContextService
 
-    init(dataService: DataService = DataService()) {
+    init(dataService: DataService = DataService(), contextService: ContextService = .shared) {
         self.dataService = dataService
+        self.contextService = contextService
     }
 
     /// Arguments for creating tasks
@@ -34,19 +36,32 @@ struct CreateTasksTool: Tool {
 
         @Generable
         struct TaskToCreate {
+            // === CONTEXT PROPERTIES (generated first for better inference) ===
+
             @Guide(description: "The title of the task")
             let title: String
+
+            @Guide(description: "Person related to this task (e.g., 'John', 'Sarah'). Extract from 'for John', 'with Sarah'.")
+            let relatedPerson: String?
+
+            @Guide(description: "Goal this contributes to (e.g., 'fitness', 'learning'). Extract if mentioned.")
+            let relatedGoal: String?
+
+            @Guide(description: "List/project name to assign task to")
+            let listName: String?
+
+            // === DEPENDENT PROPERTIES (use context above) ===
 
             @Guide(description: "Optional notes or description")
             let notes: String?
 
-            @Guide(description: "Optional due date in ISO 8601 format")
+            @Guide(description: "Due date in ISO 8601 format")
             let dueDate: String?
 
-            @Guide(description: "Optional scheduled start time in ISO 8601 format")
+            @Guide(description: "Scheduled start time in ISO 8601 format")
             let scheduledTime: String?
 
-            @Guide(description: "Optional scheduled end time in ISO 8601 format")
+            @Guide(description: "Scheduled end time in ISO 8601 format")
             let scheduledEndTime: String?
 
             @Guide(description: "Priority level")
@@ -56,13 +71,10 @@ struct CreateTasksTool: Tool {
             @Guide(description: "Whether this is a recurring task")
             let isRecurring: Bool?
 
-            @Guide(description: "Days of week for recurrence (1=Mon, 2=Tue, ..., 7=Sun)")
+            @Guide(description: "Days of week for recurrence (1=Mon...7=Sun)")
             let recurrenceDays: [Int]?
 
-            @Guide(description: "Optional list/project name to assign the task to. Match against user's existing lists.")
-            let listName: String?
-
-            @Guide(description: "Estimated duration in minutes. Common values: 5, 15, 30, 60")
+            @Guide(description: "Estimated duration in minutes")
             let estimatedMinutes: Int?
         }
     }
@@ -166,6 +178,9 @@ struct CreateTasksTool: Tool {
                     taskEntityId: createdTask.id
                 )
                 createdTasksInfo.append(taskInfo)
+
+                // Extract and reinforce context from task creation
+                await extractContextFromTask(taskData, taskId: createdTask.id)
 
                 print("✅ Successfully created task '\(taskData.title)' with dueDate: \(dueDate != nil), scheduledTime: \(scheduledTime != nil), scheduledEndTime: \(scheduledEndTime != nil)")
             } catch {
@@ -294,5 +309,60 @@ struct CreateTasksTool: Tool {
         // If all ISO 8601 parsing fails, log the issue
         print("⚠️ Could not parse scheduledTime string: '\(dateString)'")
         return nil
+    }
+
+    // MARK: - Context Extraction
+
+    /// Extract context from task creation and reinforce in ContextStore
+    @MainActor
+    private func extractContextFromTask(_ taskData: Arguments.TaskToCreate, taskId: UUID) async {
+        // Extract and reinforce person context
+        if let person = taskData.relatedPerson, !person.isEmpty {
+            do {
+                let metadata: [String: Any] = [
+                    "lastMentionedTaskId": taskId.uuidString
+                ]
+                try contextService.saveContext(
+                    category: .person,
+                    key: person.lowercased(),
+                    value: person,
+                    source: .extracted,
+                    metadata: metadata
+                )
+                print("🧠 ContextStore: Reinforced person '\(person)' from task creation")
+            } catch {
+                print("⚠️ Failed to save person context: \(error)")
+            }
+        }
+
+        // Extract and reinforce goal context
+        if let goal = taskData.relatedGoal, !goal.isEmpty {
+            do {
+                try contextService.saveContext(
+                    category: .goal,
+                    key: goal.lowercased(),
+                    value: goal,
+                    source: .extracted
+                )
+                print("🧠 ContextStore: Reinforced goal '\(goal)' from task creation")
+            } catch {
+                print("⚠️ Failed to save goal context: \(error)")
+            }
+        }
+
+        // Extract list association as preference if applicable
+        if let listName = taskData.listName, !listName.isEmpty {
+            // Track list usage pattern
+            do {
+                try contextService.saveContext(
+                    category: .preference,
+                    key: "list_\(listName.lowercased())",
+                    value: "Uses '\(listName)' list for tasks",
+                    source: .inferred
+                )
+            } catch {
+                print("⚠️ Failed to save list preference context: \(error)")
+            }
+        }
     }
 }
