@@ -56,10 +56,40 @@ struct TaskDetailView: View {
         reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)
     }
 
-    private var isTimerActive: Bool {
+    /// Timer is active for THIS task (used for FAB visibility)
+    private var isTimerActiveForThisTask: Bool {
         guard let currentTask = timerViewModel.currentTask else { return false }
         return currentTask.id == task.id &&
                (timerViewModel.timerState == .running || timerViewModel.timerState == .paused)
+    }
+
+    /// Check if task is scheduled for today (can be focused)
+    private var isTaskScheduledForToday: Bool {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? today
+
+        // Check due date
+        if let dueDate = task.dueDate {
+            let dueDateStart = calendar.startOfDay(for: dueDate)
+            if dueDateStart >= today && dueDateStart < tomorrow {
+                return true
+            }
+            // Also include overdue tasks
+            if dueDateStart < today {
+                return true
+            }
+        }
+
+        // Check scheduled time
+        if let scheduledTime = task.scheduledTime {
+            let scheduledStart = calendar.startOfDay(for: scheduledTime)
+            if scheduledStart >= today && scheduledStart < tomorrow {
+                return true
+            }
+        }
+
+        return false
     }
 
     // MARK: - Initialization
@@ -86,7 +116,7 @@ struct TaskDetailView: View {
 
     // MARK: - Body
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .bottomTrailing) {
             ScrollView {
                 VStack(spacing: Constants.Spacing.sm) {
                     // Title Input
@@ -115,12 +145,18 @@ struct TaskDetailView: View {
                 }
                 .padding(.horizontal, Constants.Spacing.lg)
                 .padding(.top, Constants.Spacing.md)
-                .padding(.bottom, 140) // Space for action bar
+                .padding(.bottom, Constants.Spacing.xl)
             }
             .background(Color(.systemGroupedBackground))
 
-            // Action Bar
-            actionBar
+            // Focus FAB (only for incomplete tasks scheduled for today)
+            if !task.isCompleted && (isTaskScheduledForToday || isTimerActiveForThisTask) {
+                FocusFABView(
+                    timerViewModel: timerViewModel,
+                    task: task,
+                    showFullTimer: $showFullTimer
+                )
+            }
         }
         .navigationTitle("Task")
         .navigationBarTitleDisplayMode(.inline)
@@ -132,16 +168,52 @@ struct TaskDetailView: View {
                 }
             }
 
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") {
-                    saveChanges()
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: Constants.Spacing.md) {
+                    // More menu (native iOS pattern)
+                    Menu {
+                        Button {
+                            HapticManager.shared.lightImpact()
+                            Task {
+                                await viewModel.toggleTaskCompletion(task)
+                            }
+                        } label: {
+                            Label(
+                                task.isCompleted ? "Mark Incomplete" : "Mark Complete",
+                                systemImage: task.isCompleted ? "arrow.uturn.backward" : "checkmark.circle"
+                            )
+                        }
+
+                        Divider()
+
+                        Button(role: .destructive) {
+                            HapticManager.shared.lightImpact()
+                            showDeleteConfirmation = true
+                        } label: {
+                            Label("Delete Task", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 17))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    // Save button
+                    Button("Save") {
+                        saveChanges()
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-                .fontWeight(.semibold)
-                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
-        .sheet(isPresented: $showFullTimer) {
-            FocusTimerSheet(viewModel: timerViewModel, task: task)
+        .fullScreenCover(isPresented: $showFullTimer) {
+            // Show timer for the task that's actually being focused, not the task being viewed
+            if let focusedTask = timerViewModel.currentTask {
+                FocusTimerSheet(viewModel: timerViewModel, task: focusedTask)
+            } else {
+                FocusTimerSheet(viewModel: timerViewModel, task: task)
+            }
         }
         .alert("Delete Task", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) { }
@@ -392,18 +464,6 @@ struct TaskDetailView: View {
     // MARK: - Footer Section
     private var footerSection: some View {
         VStack(alignment: .leading, spacing: Constants.Spacing.sm) {
-            // Focus time (if any)
-            if task.focusTimeSeconds > 0 {
-                HStack(spacing: Constants.Spacing.sm) {
-                    Image(systemName: "flame")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                    Text(task.formattedFocusTime)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
             // Created date
             Text("Created \(task.createdAt, style: .date)")
                 .font(.caption)
@@ -419,72 +479,6 @@ struct TaskDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Constants.Spacing.lg)
         .padding(.vertical, Constants.Spacing.md)
-    }
-
-    // MARK: - Action Bar
-    private var actionBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-
-            HStack(spacing: Constants.Spacing.lg) {
-                // Complete/Uncomplete button
-                actionButton(
-                    icon: task.isCompleted ? "arrow.uturn.backward" : "checkmark",
-                    label: task.isCompleted ? "Undo" : "Complete",
-                    color: .green
-                ) {
-                    Task {
-                        await viewModel.toggleTaskCompletion(task)
-                    }
-                }
-
-                // Focus Timer button
-                if !task.isCompleted {
-                    actionButton(
-                        icon: isTimerActive ? "stop.fill" : "play.fill",
-                        label: isTimerActive ? timerViewModel.formattedTime : "Focus",
-                        color: isTimerActive ? .orange : .blue
-                    ) {
-                        if isTimerActive {
-                            showFullTimer = true
-                        } else {
-                            timerViewModel.startTimer(for: task)
-                        }
-                    }
-                }
-
-                // Delete button
-                actionButton(
-                    icon: "trash",
-                    label: "Delete",
-                    color: .red
-                ) {
-                    showDeleteConfirmation = true
-                }
-            }
-            .padding(.horizontal, Constants.Spacing.xl)
-            .padding(.vertical, Constants.Spacing.md)
-        }
-        .background(.ultraThinMaterial)
-    }
-
-    @ViewBuilder
-    private func actionButton(icon: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button {
-            HapticManager.shared.mediumImpact()
-            action()
-        } label: {
-            VStack(spacing: Constants.Spacing.xs) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
-                Text(label)
-                    .font(.caption)
-            }
-            .foregroundStyle(color)
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Methods

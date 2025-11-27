@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 import AudioToolbox
+import ActivityKit
 internal import CoreData
 
 /// ViewModel for managing focus timer (Pomodoro technique)
@@ -30,6 +31,7 @@ class FocusTimerViewModel: ObservableObject {
 
     // MARK: - Properties
     private let dataService: DataService
+    private let liveActivityManager = LiveActivityManager.shared
     private var timerCancellable: AnyCancellable?
     private var sessionStartTime: Date?
     private var focusDuration: Int = 25 * 60  // 25 minutes
@@ -130,8 +132,16 @@ class FocusTimerViewModel: ObservableObject {
         // Start ambient sound
         AudioManager.shared.startForSession()
 
-        // Schedule notification for timer completion
+        // Start Live Activity (Dynamic Island) and schedule notification
         Task { @MainActor in
+            await liveActivityManager.startActivity(
+                taskTitle: task.title,
+                totalDuration: focusDuration,
+                isBreak: false,
+                currentSession: currentSessionNumber,
+                targetSessions: targetSessionCount
+            )
+
             try? await NotificationManager.shared.scheduleTimerNotification(
                 sessionType: "Focus",
                 duration: TimeInterval(focusDuration)
@@ -152,8 +162,16 @@ class FocusTimerViewModel: ObservableObject {
         // Continue ambient sound during break
         AudioManager.shared.resumeForSession()
 
-        // Schedule notification for break completion
+        // Update Live Activity for break (Dynamic Island) and schedule notification
         Task { @MainActor in
+            await liveActivityManager.startActivity(
+                taskTitle: currentTask?.title ?? "Break Time",
+                totalDuration: breakDuration,
+                isBreak: true,
+                currentSession: currentSessionNumber,
+                targetSessions: targetSessionCount
+            )
+
             try? await NotificationManager.shared.scheduleTimerNotification(
                 sessionType: "Break",
                 duration: TimeInterval(breakDuration)
@@ -171,6 +189,9 @@ class FocusTimerViewModel: ObservableObject {
 
         // Pause ambient sound
         AudioManager.shared.pauseForSession()
+
+        // Update Live Activity to show paused state
+        updateLiveActivity(isPaused: true)
     }
 
     /// Resume the timer
@@ -183,6 +204,9 @@ class FocusTimerViewModel: ObservableObject {
 
         // Resume ambient sound
         AudioManager.shared.resumeForSession()
+
+        // Update Live Activity to show running state
+        updateLiveActivity(isPaused: false)
     }
 
     /// Stop the timer and save session
@@ -204,6 +228,11 @@ class FocusTimerViewModel: ObservableObject {
             await NotificationManager.shared.cancelAllTimerNotifications()
         }
 
+        // End Live Activity (Dynamic Island) - immediate dismissal
+        Task { @MainActor in
+            await liveActivityManager.endActivity(dismissed: true)
+        }
+
         // Stop ambient sound
         AudioManager.shared.stopForSession()
 
@@ -222,6 +251,11 @@ class FocusTimerViewModel: ObservableObject {
 
         // Stop ambient sound
         AudioManager.shared.stopForSession()
+
+        // End Live Activity (Dynamic Island) - immediate dismissal
+        Task { @MainActor in
+            await liveActivityManager.endActivity(dismissed: true)
+        }
 
         // Cancel timer notifications on reset
         Task { @MainActor in
@@ -243,11 +277,27 @@ class FocusTimerViewModel: ObservableObject {
                     if self.remainingSeconds > 0 {
                         self.remainingSeconds -= 1
                         self.checkForWarningHaptics()
+
+                        // Update Live Activity every second for real-time display
+                        self.updateLiveActivity(isPaused: false)
                     } else {
                         await self.completeTimer()
                     }
                 }
             }
+    }
+
+    /// Update Live Activity with current state
+    private func updateLiveActivity(isPaused: Bool) {
+        let totalDuration = isBreak ? breakDuration : focusDuration
+        liveActivityManager.updateActivity(
+            remainingSeconds: remainingSeconds,
+            isBreak: isBreak,
+            isPaused: isPaused,
+            currentSession: currentSessionNumber,
+            targetSessions: targetSessionCount,
+            totalDuration: totalDuration
+        )
     }
 
     private func checkForWarningHaptics() {
@@ -409,6 +459,9 @@ class FocusTimerViewModel: ObservableObject {
         }
 
         HapticManager.shared.lightImpact()
+
+        // Update Live Activity with new duration
+        updateLiveActivity(isPaused: timerState == .paused)
 
         // Reschedule notification with extended time
         Task { @MainActor in

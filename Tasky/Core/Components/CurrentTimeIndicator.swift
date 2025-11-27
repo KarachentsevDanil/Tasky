@@ -17,12 +17,17 @@ struct CurrentTimeIndicator: View {
 
     // MARK: - Constants
     private enum Layout {
-        static let timeLabelWidth: CGFloat = 60
-        static let spacing: CGFloat = 12
+        static let timeLabelWidth: CGFloat = 40
+        static let spacing: CGFloat = 8
         static let dividerWidth: CGFloat = 1
-        static let horizontalPadding: CGFloat = 16
+        static let horizontalPadding: CGFloat = 12
         static let indicatorDotSize: CGFloat = 10
         static let indicatorLineHeight: CGFloat = 2
+    }
+
+    // MARK: - Computed
+    private var leftOffset: CGFloat {
+        Layout.horizontalPadding + Layout.timeLabelWidth + Layout.spacing + Layout.dividerWidth + Layout.spacing
     }
 
     // MARK: - Body
@@ -30,26 +35,20 @@ struct CurrentTimeIndicator: View {
         TimelineView(.everyMinute) { context in
             let yPosition = calculateTimeIndicatorPosition(for: context.date)
 
-            HStack(spacing: 0) {
-                // Match the time slot layout spacing
-                Color.clear.frame(width: Layout.timeLabelWidth)
-                Color.clear.frame(width: Layout.spacing)
-                Color.clear.frame(width: Layout.dividerWidth)
-                Color.clear.frame(width: Layout.spacing)
-
-                // Red dot
+            HStack(alignment: .center, spacing: 0) {
+                // Orange dot
                 Circle()
-                    .fill(Color.red)
+                    .fill(Color.orange)
                     .frame(width: Layout.indicatorDotSize, height: Layout.indicatorDotSize)
 
-                // Red line
+                // Orange horizontal line
                 Rectangle()
-                    .fill(Color.red)
+                    .fill(Color.orange)
                     .frame(height: Layout.indicatorLineHeight)
             }
-            .padding(.horizontal, Layout.horizontalPadding)
-            .offset(y: yPosition)
-            .zIndex(3) // Always on top
+            .padding(.leading, leftOffset)
+            .padding(.trailing, Layout.horizontalPadding)
+            .offset(y: yPosition - Layout.indicatorDotSize / 2)
             .allowsHitTesting(false)
             .accessibilityElement()
             .accessibilityLabel("Current time: \(formatTime(context.date))")

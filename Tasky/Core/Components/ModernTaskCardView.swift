@@ -14,6 +14,7 @@ struct ModernTaskCardView: View {
     let onToggleCompletion: () -> Void
     var showDoThisFirstBadge: Bool = false
     var useHumanReadableLabels: Bool = false
+    var isFocusActive: Bool = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -102,7 +103,16 @@ struct ModernTaskCardView: View {
                 : AnyView(Color(.systemBackground))
         )
         .clipShape(RoundedRectangle(cornerRadius: Constants.Layout.cornerRadiusSmall))
-        .shadow(color: .black.opacity(showDoThisFirstBadge && !task.isCompleted ? 0.1 : 0.02), radius: showDoThisFirstBadge && !task.isCompleted ? 4 : 2, y: showDoThisFirstBadge && !task.isCompleted ? 2 : 0.5)
+        .overlay(
+            // Focus indicator - orange border when task is being focused
+            RoundedRectangle(cornerRadius: Constants.Layout.cornerRadiusSmall)
+                .stroke(Color.orange, lineWidth: isFocusActive ? 2 : 0)
+        )
+        .shadow(
+            color: isFocusActive ? .orange.opacity(0.3) : .black.opacity(showDoThisFirstBadge && !task.isCompleted ? 0.1 : 0.02),
+            radius: isFocusActive ? 6 : (showDoThisFirstBadge && !task.isCompleted ? 4 : 2),
+            y: isFocusActive ? 0 : (showDoThisFirstBadge && !task.isCompleted ? 2 : 0.5)
+        )
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityTaskLabel)
         .accessibilityHint("Double tap to view task details")

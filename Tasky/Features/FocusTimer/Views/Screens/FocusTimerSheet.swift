@@ -151,19 +151,21 @@ struct FocusTimerSheet: View {
 
             // Close button
             Button {
-                viewModel.isTimerSheetPresented = false
+                dismiss()
             } label: {
-                Image(systemName: "xmark")
-                    .font(.body.weight(.bold))
-                    .foregroundColor(Color(.secondaryLabel))
-                    .frame(width: 36, height: 36)
-                    .background(
-                        Circle()
-                            .fill(Color(.secondarySystemBackground))
-                            .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
-                    )
+                ZStack {
+                    Circle()
+                        .fill(Color(.secondarySystemBackground))
+                        .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
+
+                    Image(systemName: "xmark")
+                        .font(.body.weight(.bold))
+                        .foregroundColor(Color(.secondaryLabel))
+                }
+                .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
+            .contentShape(Circle())
             .accessibilityLabel("Close")
         }
     }

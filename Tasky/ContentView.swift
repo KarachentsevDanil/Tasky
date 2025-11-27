@@ -18,31 +18,13 @@ struct ContentView: View {
 
     // MARK: - Body
     var body: some View {
-        ZStack(alignment: .top) {
-            mainTabView
-
-            // Global Timer Indicator (floating pill)
-            if shouldShowMiniTimer {
-                GeometryReader { geometry in
-                    MiniTimerIndicator(viewModel: focusTimerViewModel)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, geometry.safeAreaInsets.top + 8)
+        mainTabView
+            .fullScreenCover(isPresented: $focusTimerViewModel.isTimerSheetPresented) {
+                if let task = focusTimerViewModel.currentTask {
+                    FocusTimerSheet(viewModel: focusTimerViewModel, task: task)
                 }
-                .transition(.asymmetric(
-                    insertion: .move(edge: .top).combined(with: .opacity),
-                    removal: .move(edge: .top).combined(with: .opacity)
-                ))
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: shouldShowMiniTimer)
-                .zIndex(100)
-                .allowsHitTesting(true)
             }
-        }
-        .fullScreenCover(isPresented: $focusTimerViewModel.isTimerSheetPresented) {
-            if let task = focusTimerViewModel.currentTask {
-                FocusTimerSheet(viewModel: focusTimerViewModel, task: task)
-            }
-        }
-        .preferredColorScheme(appearanceMode.colorScheme)
+            .preferredColorScheme(appearanceMode.colorScheme)
     }
 
     // MARK: - Main Tab View
@@ -87,14 +69,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Computed Properties
-
-    /// Show mini timer when timer is active and full sheet is not presented
-    private var shouldShowMiniTimer: Bool {
-        focusTimerViewModel.timerState != .idle &&
-        focusTimerViewModel.timerState != .completed &&
-        !focusTimerViewModel.isTimerSheetPresented
-    }
 }
 
 // MARK: - Preview

@@ -12,7 +12,7 @@ struct TodayView: View {
 
     // MARK: - Properties
     @StateObject var viewModel: TaskListViewModel
-    @StateObject private var timerViewModel = FocusTimerViewModel()
+    @ObservedObject private var timerViewModel = FocusTimerViewModel.shared
     @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     // MARK: - State
@@ -353,7 +353,8 @@ struct TodayView: View {
                     }
                 },
                 showDoThisFirstBadge: isTopPriority,
-                useHumanReadableLabels: true
+                useHumanReadableLabels: true,
+                isFocusActive: isTaskBeingFocused(task)
             )
             .onTapGesture {
                 selectedTaskForDetail = task
@@ -585,6 +586,13 @@ struct TodayView: View {
     private func moveTaskToList(_ task: TaskEntity, list: TaskListEntity) async {
         await viewModel.updateTask(task, list: list)
         HapticManager.shared.lightImpact()
+    }
+
+    /// Check if a task is currently being focused
+    private func isTaskBeingFocused(_ task: TaskEntity) -> Bool {
+        guard let focusedTask = timerViewModel.currentTask else { return false }
+        return focusedTask.id == task.id &&
+               (timerViewModel.timerState == .running || timerViewModel.timerState == .paused)
     }
 }
 

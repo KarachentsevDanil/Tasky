@@ -25,10 +25,10 @@ struct TimeGridView: View {
 
     // MARK: - Constants
     private enum Layout {
-        static let timeLabelWidth: CGFloat = 60
-        static let spacing: CGFloat = 12
+        static let timeLabelWidth: CGFloat = 40
+        static let spacing: CGFloat = 8
         static let dividerWidth: CGFloat = 1
-        static let horizontalPadding: CGFloat = 16
+        static let horizontalPadding: CGFloat = 12
         static let dragThreshold: CGFloat = 5  // Minimum distance to start drag
     }
 
