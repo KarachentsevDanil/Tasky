@@ -12,7 +12,7 @@ struct TodayView: View {
 
     // MARK: - Properties
     @StateObject var viewModel: TaskListViewModel
-    @StateObject private var timerViewModel = FocusTimerViewModel()
+    @ObservedObject private var timerViewModel = FocusTimerViewModel.shared
     @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     // MARK: - State
@@ -195,7 +195,10 @@ struct TodayView: View {
             }
             .navigationBarHidden(true)
             .sheet(isPresented: $showQuickAdd) {
-                QuickAddSheet(viewModel: viewModel, isPresented: $showQuickAdd)
+                QuickAddSheet(
+                    viewModel: viewModel,
+                    isPresented: $showQuickAdd
+                )
             }
             .navigationDestination(isPresented: $showAddTask) {
                 AddTaskView(viewModel: viewModel)
@@ -329,38 +332,32 @@ struct TodayView: View {
     // MARK: - Task Row
     @ViewBuilder
     private func taskRow(for task: TaskEntity, isTopPriority: Bool) -> some View {
-        ModernTaskCardView(
-            task: task,
-            onToggleCompletion: {
+        SwipeableTaskCard(
+            onComplete: {
                 Task {
                     await toggleTaskCompletion(task)
                 }
             },
-            showDoThisFirstBadge: isTopPriority,
-            useHumanReadableLabels: true
-        )
-        .onTapGesture {
-            selectedTaskForDetail = task
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            Button {
-                Task {
-                    await toggleTaskCompletion(task)
-                }
-            } label: {
-                Label("Complete", systemImage: "checkmark")
-            }
-            .tint(.green)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
+            onDelete: {
                 Task {
                     await viewModel.deleteTaskWithUndo(task)
                     undoAction = .deletion
-                    HapticManager.shared.mediumImpact()
                 }
-            } label: {
-                Label("Delete", systemImage: "trash")
+            }
+        ) {
+            ModernTaskCardView(
+                task: task,
+                onToggleCompletion: {
+                    Task {
+                        await toggleTaskCompletion(task)
+                    }
+                },
+                showDoThisFirstBadge: isTopPriority,
+                useHumanReadableLabels: true,
+                isFocusActive: isTaskBeingFocused(task)
+            )
+            .onTapGesture {
+                selectedTaskForDetail = task
             }
         }
         .contextMenu {
@@ -589,6 +586,13 @@ struct TodayView: View {
     private func moveTaskToList(_ task: TaskEntity, list: TaskListEntity) async {
         await viewModel.updateTask(task, list: list)
         HapticManager.shared.lightImpact()
+    }
+
+    /// Check if a task is currently being focused
+    private func isTaskBeingFocused(_ task: TaskEntity) -> Bool {
+        guard let focusedTask = timerViewModel.currentTask else { return false }
+        return focusedTask.id == task.id &&
+               (timerViewModel.timerState == .running || timerViewModel.timerState == .paused)
     }
 }
 

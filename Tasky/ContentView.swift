@@ -12,11 +12,24 @@ struct ContentView: View {
 
     // MARK: - State
     @StateObject private var viewModel = TaskListViewModel()
+    @StateObject private var focusTimerViewModel = FocusTimerViewModel.shared
     @State private var selectedTab = 0
     @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system
 
     // MARK: - Body
     var body: some View {
+        mainTabView
+            .fullScreenCover(isPresented: $focusTimerViewModel.isTimerSheetPresented) {
+                if let task = focusTimerViewModel.currentTask {
+                    FocusTimerSheet(viewModel: focusTimerViewModel, task: task)
+                }
+            }
+            .preferredColorScheme(appearanceMode.colorScheme)
+    }
+
+    // MARK: - Main Tab View
+
+    private var mainTabView: some View {
         TabView(selection: $selectedTab) {
             // Today Tab - Enhanced with completion ring and celebrations
             TodayView(viewModel: viewModel)
@@ -41,7 +54,7 @@ struct ContentView: View {
                 .tabItem {
                     Image(systemName: "sparkles")
                         .symbolRenderingMode(Constants.IconRendering.multicolor)
-                    Text("AI Coach")
+                    Text("AI Assistant")
                 }
                 .tag(2)
 
@@ -54,8 +67,8 @@ struct ContentView: View {
                 }
                 .tag(3)
         }
-        .preferredColorScheme(appearanceMode.colorScheme)
     }
+
 }
 
 // MARK: - Preview

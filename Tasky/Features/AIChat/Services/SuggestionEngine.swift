@@ -119,25 +119,25 @@ class SuggestionEngine {
         case 5..<12:
             // Morning: Add for today
             suggestions.append(Suggestion(
-                text: "Add for today",
-                prompt: "Add task for today: ",
-                icon: "sun.max",
+                text: "Add tasks for today",
+                prompt: "Add tasks for today: ",
+                icon: "sun.max.fill",
                 type: .action
             ))
         case 17..<24, 0..<5:
             // Evening/Night: Add for tomorrow
             suggestions.append(Suggestion(
-                text: "Add for tomorrow",
-                prompt: "Add task for tomorrow: ",
-                icon: "moon",
+                text: "Add tasks for tomorrow",
+                prompt: "Add tasks for tomorrow: ",
+                icon: "moon.fill",
                 type: .action
             ))
         default:
             // Afternoon: Generic add
             suggestions.append(Suggestion(
-                text: "Add a task",
-                prompt: "",
-                icon: "plus.circle",
+                text: "Add tasks",
+                prompt: "Add tasks: ",
+                icon: "plus.circle.fill",
                 type: .action
             ))
         }
@@ -148,14 +148,15 @@ class SuggestionEngine {
     private func addInboxSuggestion(_ suggestions: inout [Suggestion]) async {
         do {
             let allTasks = try dataService.fetchAllTasks()
-            let inboxCount = allTasks.filter { $0.taskList == nil && !$0.isCompleted }.count
+            let inboxTasks = allTasks.filter { $0.taskList == nil && !$0.isCompleted }
+            let inboxCount = inboxTasks.count
 
             if inboxCount > 3 {
                 suggestions.append(Suggestion(
-                    text: "Process inbox (\(inboxCount))",
-                    prompt: "What's in my inbox?",
-                    icon: "tray.full",
-                    type: .query
+                    text: "Complete inbox (\(inboxCount))",
+                    prompt: "Complete all inbox tasks",
+                    icon: "tray.full.fill",
+                    type: .action
                 ))
             }
         } catch {
@@ -165,19 +166,15 @@ class SuggestionEngine {
 
     private func addOverdueSuggestion(_ suggestions: inout [Suggestion]) async {
         do {
-            let allTasks = try dataService.fetchAllTasks()
-            let startOfToday = Calendar.current.startOfDay(for: Date())
-            let overdueCount = allTasks.filter { task in
-                guard let dueDate = task.dueDate else { return false }
-                return dueDate < startOfToday && !task.isCompleted
-            }.count
+            let overdueTasks = try dataService.fetchOverdueTasks()
+            let overdueCount = overdueTasks.count
 
             if overdueCount > 0 {
                 suggestions.append(Suggestion(
-                    text: "Review overdue (\(overdueCount))",
-                    prompt: "Show my overdue tasks",
-                    icon: "exclamationmark.circle",
-                    type: .query
+                    text: "Reschedule overdue (\(overdueCount))",
+                    prompt: "Clean up overdue tasks",
+                    icon: "exclamationmark.circle.fill",
+                    type: .action
                 ))
             }
         } catch {
@@ -185,7 +182,7 @@ class SuggestionEngine {
         }
     }
 
-    // MARK: - Time-Based Query Suggestions
+    // MARK: - Time-Based Smart Suggestions
 
     private func addTimeBasedQuerySuggestions(_ suggestions: inout [Suggestion]) {
         // Only add if we don't have too many suggestions
@@ -195,36 +192,36 @@ class SuggestionEngine {
 
         switch hour {
         case 5..<10:
-            // Morning - focus on planning
+            // Morning - use planMyDay tool
             suggestions.append(Suggestion(
                 text: "Plan my day",
-                prompt: "What's due today?",
-                icon: "sun.horizon",
+                prompt: "Plan my day",
+                icon: "sun.horizon.fill",
                 type: .query
             ))
         case 10..<14:
-            // Late morning/early afternoon - productive time
+            // Late morning/early afternoon - bulk complete high priority
             suggestions.append(Suggestion(
-                text: "High priority tasks",
-                prompt: "Show my high priority tasks",
+                text: "Complete urgent tasks",
+                prompt: "Complete all high priority tasks",
                 icon: "flag.fill",
-                type: .query
+                type: .action
             ))
         case 14..<17:
-            // Afternoon
+            // Afternoon - check what's left
             suggestions.append(Suggestion(
-                text: "What's left today?",
-                prompt: "What's due today?",
+                text: "Show today's plan",
+                prompt: "Plan my day",
                 icon: "checklist",
                 type: .query
             ))
         case 17..<22:
-            // Evening - plan ahead
+            // Evening - reschedule incomplete to tomorrow
             suggestions.append(Suggestion(
-                text: "Plan tomorrow",
-                prompt: "What's due tomorrow?",
-                icon: "moon.stars",
-                type: .query
+                text: "Move tasks to tomorrow",
+                prompt: "Move today's incomplete tasks to tomorrow",
+                icon: "moon.stars.fill",
+                type: .action
             ))
         default:
             // Late night - already covered by creation suggestion
@@ -250,35 +247,25 @@ class SuggestionEngine {
                 return completedAt >= weekAgo
             }.count
 
-            // If user has been active, suggest analytics
-            if completedThisWeek >= 5 && suggestions.count < 5 {
-                suggestions.append(Suggestion(
-                    text: "My progress",
-                    prompt: "How am I doing today?",
-                    icon: "chart.bar",
-                    type: .query
-                ))
-            }
-
-            // Suggest focus session if there are high priority incomplete tasks
-            let highPriorityTasks = allTasks.filter { !$0.isCompleted && $0.priority >= 2 }
-            if let firstTask = highPriorityTasks.first, suggestions.count < 5 {
-                suggestions.append(Suggestion(
-                    text: "Focus time",
-                    prompt: "Start 25-minute focus on \(firstTask.title)",
-                    icon: "timer",
-                    type: .action
-                ))
-            }
-
-            // Suggest streak check on weekends
+            // On weekends or if active, suggest weekly review
             let weekday = calendar.component(.weekday, from: Date())
-            if (weekday == 1 || weekday == 7) && suggestions.count < 5 {
+            if (weekday == 1 || weekday == 7 || completedThisWeek >= 5) && suggestions.count < 5 {
                 suggestions.append(Suggestion(
-                    text: "My streak",
-                    prompt: "What's my productivity streak?",
-                    icon: "flame",
+                    text: "See weekly summary",
+                    prompt: "How was my week?",
+                    icon: "chart.bar.fill",
                     type: .query
+                ))
+            }
+
+            // If there are high priority tasks, suggest bulk complete
+            let highPriorityTasks = allTasks.filter { !$0.isCompleted && $0.priority >= 2 }
+            if highPriorityTasks.count > 1 && suggestions.count < 5 {
+                suggestions.append(Suggestion(
+                    text: "Complete urgent (\(highPriorityTasks.count))",
+                    prompt: "Complete all high priority tasks",
+                    icon: "flag.fill",
+                    type: .action
                 ))
             }
         } catch {
@@ -294,12 +281,33 @@ class SuggestionEngine {
 
         do {
             let lists = try dataService.fetchAllTaskLists()
-            // Add suggestion for first list if available
-            if let firstList = lists.first {
+            let allTasks = try dataService.fetchAllTasks()
+
+            // Find list with most incomplete tasks for bulk completion
+            var listWithMostTasks: (name: String, count: Int)?
+            for list in lists {
+                let incompleteTasks = allTasks.filter { $0.taskList?.id == list.id && !$0.isCompleted }
+                if incompleteTasks.count > 2 {
+                    if listWithMostTasks == nil || incompleteTasks.count > listWithMostTasks!.count {
+                        listWithMostTasks = (list.name, incompleteTasks.count)
+                    }
+                }
+            }
+
+            // Suggest completing tasks in the busiest list
+            if let busyList = listWithMostTasks {
                 suggestions.append(Suggestion(
-                    text: "Add to \(firstList.name)",
-                    prompt: "Add task to \(firstList.name) list: ",
-                    icon: "folder",
+                    text: "Complete \(busyList.name) (\(busyList.count))",
+                    prompt: "Complete all tasks in \(busyList.name)",
+                    icon: "folder.fill",
+                    type: .action
+                ))
+            } else if let firstList = lists.first {
+                // Fallback: suggest adding to first list
+                suggestions.append(Suggestion(
+                    text: "Add tasks to \(firstList.name)",
+                    prompt: "Add tasks to \(firstList.name): ",
+                    icon: "folder.fill",
                     type: .action
                 ))
             }

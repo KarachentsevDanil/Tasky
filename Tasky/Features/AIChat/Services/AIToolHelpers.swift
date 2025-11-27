@@ -11,6 +11,117 @@ import Foundation
 @MainActor
 struct AIToolHelpers {
 
+    // MARK: - Filter Resolution for Bulk Operations
+
+    /// Resolve TaskFilter to TaskFilterCriteria for DataService queries
+    static func resolveFilter(_ filter: TaskFilter, dataService: DataService) -> TaskFilterCriteria {
+        var criteria = TaskFilterCriteria()
+
+        // Explicit task names take highest priority - find their IDs
+        if let names = filter.taskNames, !names.isEmpty {
+            var taskIds: [UUID] = []
+            for name in names {
+                if let task = findTask(name, dataService: dataService) {
+                    taskIds.append(task.id)
+                }
+            }
+            if !taskIds.isEmpty {
+                criteria.taskIds = taskIds
+                return criteria // Explicit names override other filters
+            }
+        }
+
+        // List filter
+        if let listName = filter.listName {
+            if let list = findList(listName, dataService: dataService) {
+                criteria.listId = list.id
+            }
+        }
+
+        // Status filter
+        if let status = filter.status {
+            switch status.lowercased() {
+            case "overdue":
+                criteria.isOverdue = true
+                criteria.isCompleted = false
+            case "today":
+                criteria.isDueToday = true
+                criteria.isCompleted = false
+            case "tomorrow":
+                criteria.isDueTomorrow = true
+                criteria.isCompleted = false
+            case "this_week":
+                criteria.isDueThisWeek = true
+                criteria.isCompleted = false
+            case "completed":
+                criteria.isCompleted = true
+            case "incomplete":
+                criteria.isCompleted = false
+            case "all":
+                break // No filter
+            default:
+                break
+            }
+        }
+
+        // Priority filter
+        if let priority = filter.priority {
+            switch priority.lowercased() {
+            case "high": criteria.priorityLevel = 2
+            case "medium": criteria.priorityLevel = 1
+            case "low": criteria.priorityLevel = 0
+            default: break
+            }
+        }
+
+        // Time range filter
+        if let timeRange = filter.timeRange {
+            switch timeRange.lowercased() {
+            case "older_than_week":
+                criteria.olderThanDays = 7
+            case "older_than_month":
+                criteria.olderThanDays = 30
+            case "due_this_week":
+                criteria.isDueThisWeek = true
+            case "due_next_week":
+                criteria.isDueNextWeek = true
+            case "no_due_date":
+                criteria.hasNoDueDate = true
+            default:
+                break
+            }
+        }
+
+        // Keyword filter
+        if let keyword = filter.keyword, !keyword.isEmpty {
+            criteria.keyword = keyword
+        }
+
+        return criteria
+    }
+
+    /// Fetch tasks matching a TaskFilter
+    static func fetchTasksMatching(_ filter: TaskFilter, dataService: DataService) throws -> [TaskEntity] {
+        let criteria = resolveFilter(filter, dataService: dataService)
+        return try dataService.fetchTasks(matching: criteria)
+    }
+
+    /// Find multiple tasks by names
+    static func findTasks(_ names: [String], dataService: DataService) -> [TaskEntity] {
+        return names.compactMap { findTask($0, dataService: dataService) }
+    }
+
+    /// Format duration in minutes to human readable string
+    static func formatDuration(_ minutes: Int) -> String {
+        if minutes < 60 {
+            return "\(minutes)m"
+        } else if minutes % 60 == 0 {
+            return "\(minutes / 60)h"
+        } else {
+            return "\(minutes / 60)h \(minutes % 60)m"
+        }
+    }
+
     // MARK: - Task Finding
 
     /// Find a task by title with fuzzy matching

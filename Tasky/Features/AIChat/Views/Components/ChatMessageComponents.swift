@@ -12,9 +12,14 @@ struct MessageBubble: View {
     let message: ChatMessage
 
     var body: some View {
-        HStack {
+        HStack(alignment: .bottom, spacing: 8) {
             if message.role == .user {
                 Spacer(minLength: 60)
+            }
+
+            // AI Avatar for assistant messages
+            if message.role == .assistant {
+                aiAvatar
             }
 
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
@@ -41,6 +46,26 @@ struct MessageBubble: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(message.role == .user ? "You" : "AI Assistant"): \(message.content)")
     }
+
+    // MARK: - AI Avatar
+    private var aiAvatar: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.blue.opacity(0.8), Color.purple.opacity(0.8)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 28, height: 28)
+
+            Image(systemName: "sparkles")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+        .accessibilityHidden(true)
+    }
 }
 
 /// Animated typing indicator for assistant responses
@@ -49,7 +74,10 @@ struct TypingIndicator: View {
     @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     var body: some View {
-        HStack {
+        HStack(alignment: .bottom, spacing: 8) {
+            // AI Avatar
+            aiAvatar
+
             HStack(spacing: 6) {
                 ForEach(0..<3) { index in
                     Circle()
@@ -59,7 +87,7 @@ struct TypingIndicator: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 12)
             .background(
                 RoundedRectangle(cornerRadius: 20)
                     .fill(Color(.systemGray5))
@@ -71,6 +99,26 @@ struct TypingIndicator: View {
         .onAppear {
             startAnimation()
         }
+    }
+
+    // MARK: - AI Avatar
+    private var aiAvatar: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.blue.opacity(0.8), Color.purple.opacity(0.8)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 28, height: 28)
+
+            Image(systemName: "sparkles")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+        .accessibilityHidden(true)
     }
 
     private func startAnimation() {

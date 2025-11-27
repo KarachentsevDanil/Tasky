@@ -476,6 +476,335 @@ class DataService {
             )
         }
     }
+
+    // MARK: - Batch Operations for Bulk AI Tools
+
+    /// Complete multiple tasks at once (single save)
+    @discardableResult
+    func completeTasks(_ tasks: [TaskEntity], completed: Bool = true) throws -> Int {
+        var count = 0
+        for task in tasks {
+            if task.isCompleted != completed {
+                task.isCompleted = completed
+                task.completedAt = completed ? Date() : nil
+                count += 1
+
+                // Cancel notifications when completed
+                if completed {
+                    NotificationManager.shared.cancelTaskNotifications(taskId: task.id)
+                }
+            }
+        }
+        try persistenceController.save(context: viewContext)
+        return count
+    }
+
+    /// Reschedule multiple tasks to a new date (single save)
+    @discardableResult
+    func rescheduleTasks(_ tasks: [TaskEntity], to newDate: Date, time: Date? = nil) throws -> Int {
+        for task in tasks {
+            task.dueDate = newDate
+            if let time = time {
+                task.scheduledTime = time
+            }
+            // Recalculate AI priority score
+            task.aiPriorityScore = calculateAIPriorityScore(for: task)
+
+            // Reschedule notifications
+            NotificationManager.shared.cancelTaskNotifications(taskId: task.id)
+            Task { @MainActor in
+                if newDate > Date() {
+                    try? await NotificationManager.shared.scheduleTaskNotification(
+                        taskId: task.id,
+                        title: task.title,
+                        date: newDate,
+                        isScheduledTime: false
+                    )
+                }
+            }
+        }
+        try persistenceController.save(context: viewContext)
+        return tasks.count
+    }
+
+    /// Delete multiple tasks at once (single save)
+    @discardableResult
+    func deleteTasks(_ tasks: [TaskEntity]) throws -> Int {
+        let count = tasks.count
+        for task in tasks {
+            NotificationManager.shared.cancelTaskNotifications(taskId: task.id)
+            viewContext.delete(task)
+        }
+        try persistenceController.save(context: viewContext)
+        return count
+    }
+
+    /// Update priority for multiple tasks (single save)
+    @discardableResult
+    func updateTasksPriority(_ tasks: [TaskEntity], priority: Int16) throws -> Int {
+        for task in tasks {
+            task.priority = priority
+            task.aiPriorityScore = calculateAIPriorityScore(for: task)
+        }
+        try persistenceController.save(context: viewContext)
+        return tasks.count
+    }
+
+    /// Move multiple tasks to a list (single save)
+    @discardableResult
+    func moveTasksToList(_ tasks: [TaskEntity], list: TaskListEntity?) throws -> Int {
+        for task in tasks {
+            task.taskList = list
+        }
+        try persistenceController.save(context: viewContext)
+        return tasks.count
+    }
+
+    // MARK: - Filter-Based Queries for Bulk Operations
+
+    /// Fetch tasks matching filter criteria
+    func fetchTasks(matching criteria: TaskFilterCriteria) throws -> [TaskEntity] {
+        let fetchRequest: NSFetchRequest<TaskEntity> = TaskEntity.fetchRequest()
+        fetchRequest.predicate = criteria.buildPredicate()
+        fetchRequest.sortDescriptors = [
+            NSSortDescriptor(keyPath: \TaskEntity.priority, ascending: false),
+            NSSortDescriptor(keyPath: \TaskEntity.dueDate, ascending: true)
+        ]
+        fetchRequest.fetchBatchSize = 50
+        return try viewContext.fetch(fetchRequest)
+    }
+
+    /// Fetch overdue tasks (due before today, not completed)
+    func fetchOverdueTasks() throws -> [TaskEntity] {
+        let startOfToday = Calendar.current.startOfDay(for: Date())
+        let request = TaskEntity.fetchRequest()
+        request.predicate = NSPredicate(
+            format: "dueDate < %@ AND isCompleted == NO",
+            startOfToday as NSDate
+        )
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \TaskEntity.dueDate, ascending: true)]
+        return try viewContext.fetch(request)
+    }
+
+    /// Fetch tasks older than specified days
+    func fetchTasksOlderThan(days: Int, completedOnly: Bool = false) throws -> [TaskEntity] {
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -days, to: Date())!
+        let request = TaskEntity.fetchRequest()
+
+        if completedOnly {
+            request.predicate = NSPredicate(
+                format: "completedAt < %@ AND isCompleted == YES",
+                cutoffDate as NSDate
+            )
+        } else {
+            request.predicate = NSPredicate(
+                format: "createdAt < %@",
+                cutoffDate as NSDate
+            )
+        }
+        return try viewContext.fetch(request)
+    }
+
+    /// Fetch tasks completed within a date range
+    func fetchTasksCompletedBetween(start: Date, end: Date) throws -> [TaskEntity] {
+        let request = TaskEntity.fetchRequest()
+        request.predicate = NSPredicate(
+            format: "completedAt >= %@ AND completedAt < %@ AND isCompleted == YES",
+            start as NSDate,
+            end as NSDate
+        )
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \TaskEntity.completedAt, ascending: false)]
+        return try viewContext.fetch(request)
+    }
+
+    /// Fetch tasks created within a date range
+    func fetchTasksCreatedBetween(start: Date, end: Date) throws -> [TaskEntity] {
+        let request = TaskEntity.fetchRequest()
+        request.predicate = NSPredicate(
+            format: "createdAt >= %@ AND createdAt < %@",
+            start as NSDate,
+            end as NSDate
+        )
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \TaskEntity.createdAt, ascending: false)]
+        return try viewContext.fetch(request)
+    }
+
+    /// Get task count for a specific list
+    func fetchTaskCount(for list: TaskListEntity, completedOnly: Bool = false) throws -> Int {
+        let request = TaskEntity.fetchRequest()
+        if completedOnly {
+            request.predicate = NSPredicate(format: "taskList == %@ AND isCompleted == YES", list)
+        } else {
+            request.predicate = NSPredicate(format: "taskList == %@", list)
+        }
+        return try viewContext.count(for: request)
+    }
+
+    /// Fetch high priority incomplete tasks
+    func fetchHighPriorityPendingTasks() throws -> [TaskEntity] {
+        let request = TaskEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "priority >= 2 AND isCompleted == NO")
+        request.sortDescriptors = [
+            NSSortDescriptor(keyPath: \TaskEntity.priority, ascending: false),
+            NSSortDescriptor(keyPath: \TaskEntity.dueDate, ascending: true)
+        ]
+        return try viewContext.fetch(request)
+    }
+
+    // MARK: - Focus Session Operations
+
+    /// Fetch today's focus sessions
+    func fetchTodaysFocusSessions() throws -> [FocusSessionEntity] {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+
+        return try fetchFocusSessions(from: startOfDay, to: endOfDay)
+    }
+
+    /// Fetch yesterday's focus sessions
+    func fetchYesterdaysFocusSessions() throws -> [FocusSessionEntity] {
+        let calendar = Calendar.current
+        let startOfYesterday = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -1, to: Date())!)
+        let startOfToday = calendar.startOfDay(for: Date())
+
+        return try fetchFocusSessions(from: startOfYesterday, to: startOfToday)
+    }
+
+    /// Fetch focus sessions within a date range
+    func fetchFocusSessions(from startDate: Date, to endDate: Date) throws -> [FocusSessionEntity] {
+        let request = FocusSessionEntity.fetchRequest()
+        request.predicate = NSPredicate(
+            format: "startTime >= %@ AND startTime < %@ AND completed == YES",
+            startDate as NSDate,
+            endDate as NSDate
+        )
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \FocusSessionEntity.startTime, ascending: false)]
+        return try viewContext.fetch(request)
+    }
+
+    /// Fetch all completed focus sessions
+    func fetchAllFocusSessions() throws -> [FocusSessionEntity] {
+        let request = FocusSessionEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "completed == YES")
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \FocusSessionEntity.startTime, ascending: false)]
+        return try viewContext.fetch(request)
+    }
+
+    /// Fetch focus sessions grouped by day for heatmap
+    func fetchFocusSessionsByDay(from startDate: Date, to endDate: Date) throws -> [DayFocusData] {
+        let sessions = try fetchFocusSessions(from: startDate, to: endDate)
+        let calendar = Calendar.current
+
+        // Group sessions by day
+        var dayData: [Date: DayFocusData] = [:]
+
+        for session in sessions {
+            let day = calendar.startOfDay(for: session.startTime)
+
+            if var existing = dayData[day] {
+                existing.totalSeconds += Int(session.duration)
+                existing.sessionCount += 1
+                dayData[day] = existing
+            } else {
+                dayData[day] = DayFocusData(
+                    date: day,
+                    totalSeconds: Int(session.duration),
+                    sessionCount: 1
+                )
+            }
+        }
+
+        // Fill in missing days with zero data
+        var result: [DayFocusData] = []
+        var currentDate = calendar.startOfDay(for: startDate)
+
+        while currentDate < endDate {
+            if let data = dayData[currentDate] {
+                result.append(data)
+            } else {
+                result.append(DayFocusData(date: currentDate, totalSeconds: 0, sessionCount: 0))
+            }
+            currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate)!
+        }
+
+        return result
+    }
+
+    /// Fetch focus rankings by task
+    func fetchFocusRankings(from startDate: Date? = nil, to endDate: Date? = nil) throws -> [TaskFocusRanking] {
+        let request = FocusSessionEntity.fetchRequest()
+
+        if let start = startDate, let end = endDate {
+            request.predicate = NSPredicate(
+                format: "startTime >= %@ AND startTime < %@ AND completed == YES",
+                start as NSDate,
+                end as NSDate
+            )
+        } else {
+            request.predicate = NSPredicate(format: "completed == YES")
+        }
+
+        let sessions = try viewContext.fetch(request)
+
+        // Group by task
+        var taskTotals: [UUID: (title: String, listName: String?, seconds: Int, count: Int)] = [:]
+
+        for session in sessions {
+            let taskId = session.task.id
+            let existing = taskTotals[taskId]
+
+            if let existing = existing {
+                taskTotals[taskId] = (
+                    title: existing.title,
+                    listName: existing.listName,
+                    seconds: existing.seconds + Int(session.duration),
+                    count: existing.count + 1
+                )
+            } else {
+                taskTotals[taskId] = (
+                    title: session.task.title,
+                    listName: session.task.taskList?.name,
+                    seconds: Int(session.duration),
+                    count: 1
+                )
+            }
+        }
+
+        // Convert to rankings and sort by duration
+        return taskTotals.map { (id, data) in
+            TaskFocusRanking(
+                id: id,
+                taskTitle: data.title,
+                taskListName: data.listName,
+                totalSeconds: data.seconds,
+                sessionCount: data.count
+            )
+        }
+        .sorted { $0.totalSeconds > $1.totalSeconds }
+    }
+
+    /// Calculate focus statistics
+    func calculateFocusStatistics() throws -> FocusStatistics {
+        var stats = FocusStatistics()
+
+        // Today's stats
+        let todaySessions = try fetchTodaysFocusSessions()
+        stats.todaysPomoCount = todaySessions.count
+        stats.todaysFocusSeconds = todaySessions.reduce(0) { $0 + Int($1.duration) }
+
+        // Yesterday's stats
+        let yesterdaySessions = try fetchYesterdaysFocusSessions()
+        stats.yesterdaysPomoCount = yesterdaySessions.count
+        stats.yesterdaysFocusSeconds = yesterdaySessions.reduce(0) { $0 + Int($1.duration) }
+
+        // Total stats
+        let allSessions = try fetchAllFocusSessions()
+        stats.totalPomoCount = allSessions.count
+        stats.totalFocusSeconds = allSessions.reduce(0) { $0 + Int($1.duration) }
+
+        return stats
+    }
 }
 
 // MARK: - Errors

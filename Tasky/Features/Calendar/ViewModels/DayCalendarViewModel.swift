@@ -68,13 +68,24 @@ final class DayCalendarViewModel: ObservableObject {
     }
 
     // MARK: - Time Calculations
-    func timeFromYPosition(_ y: CGFloat) -> Date {
-        let minutesFromStart = Int(y / (hourHeight / 60))
-        let totalMinutes = (startHour * 60) + minutesFromStart
-        let hours = totalMinutes / 60
-        let minutes = totalMinutes % 60
+
+    /// Convert global Y position to time
+    /// - Parameter y: Y position from top of time grid (0 = startHour)
+    func timeFromGlobalY(_ y: CGFloat) -> Date {
+        let minutesPerPixel = 60.0 / hourHeight
+        let totalMinutesFromStart = Int(y * minutesPerPixel)
+        let totalMinutes = (startHour * 60) + totalMinutesFromStart
+
+        // Clamp to valid range
+        let clampedMinutes = max(startHour * 60, min((endHour - 1) * 60 + 59, totalMinutes))
+        let hours = clampedMinutes / 60
+        let minutes = clampedMinutes % 60
 
         return selectedDate.setting(hour: hours, minute: minutes) ?? selectedDate
+    }
+
+    func timeFromYPosition(_ y: CGFloat) -> Date {
+        return timeFromGlobalY(y)
     }
 
     func yPositionFromTime(_ time: Date) -> CGFloat {
@@ -86,17 +97,11 @@ final class DayCalendarViewModel: ObservableObject {
         return CGFloat(minutesFromStart) * (hourHeight / 60)
     }
 
-    func timeFromHourAndLocation(hour: Int, location: CGPoint) -> Date {
-        // Calculate minutes based on vertical position within the hour
-        let minutesIntoHour = Int((location.y / hourHeight) * 60)
-        let clampedMinutes = max(0, min(59, minutesIntoHour))
-
-        return selectedDate.setting(hour: hour, minute: clampedMinutes) ?? selectedDate
-    }
-
     // MARK: - Quick Event Creation
-    func handleTimeSlotTap(hour: Int, location: CGPoint) {
-        let time = timeFromHourAndLocation(hour: hour, location: location)
+
+    /// Handle tap on time slot using global Y position
+    func handleTimeSlotTap(at globalY: CGFloat) {
+        let time = timeFromGlobalY(globalY)
         let roundedTime = time.rounded(toNearest: 15)
 
         // Set up schedule sheet with default 1-hour duration
@@ -108,28 +113,44 @@ final class DayCalendarViewModel: ObservableObject {
     }
 
     // MARK: - Drag to Create Event
-    func startDraggingNewEvent(hour: Int, location: CGPoint) {
-        let time = timeFromHourAndLocation(hour: hour, location: location)
+
+    /// Track the last time we triggered haptic feedback (for 15-min boundary crossing)
+    private var lastHapticTime: Date?
+
+    /// Start dragging to create a new event at the given global Y position
+    func startDraggingNewEvent(at globalY: CGFloat) {
+        let time = timeFromGlobalY(globalY)
+        let roundedTime = time.rounded(toNearest: 15)
+
         isDraggingNewEvent = true
-        dragStartTime = time.rounded(toNearest: 15)
-        dragEndTime = dragStartTime?.addingMinutes(30) // Default 30 min
+        dragStartTime = roundedTime
+        dragEndTime = roundedTime.addingMinutes(15) // Minimum 15 min
+        lastHapticTime = roundedTime
 
         HapticManager.shared.selectionChanged()
     }
 
-    func updateDraggedEvent(hour: Int, location: CGPoint) {
-        guard let dragStartTime else { return }
+    /// Update the dragged event as user drags to a new global Y position
+    func updateDraggedEvent(to globalY: CGFloat) {
+        guard let originalStartTime = dragStartTime else { return }
 
-        let currentTime = timeFromHourAndLocation(hour: hour, location: location)
+        let currentTime = timeFromGlobalY(globalY)
         let roundedTime = currentTime.rounded(toNearest: 15)
 
+        // Haptic feedback when crossing 15-minute boundaries
+        if roundedTime != lastHapticTime {
+            HapticManager.shared.selectionChanged()
+            lastHapticTime = roundedTime
+        }
+
         // Ensure minimum 15 minute duration
-        if roundedTime > dragStartTime {
+        if roundedTime > originalStartTime {
+            // Dragging downward - extend end time
             dragEndTime = roundedTime
-        } else if roundedTime < dragStartTime {
-            // Dragging upward - adjust start time
-            self.dragStartTime = roundedTime
-            dragEndTime = dragStartTime.addingMinutes(15)
+        } else if roundedTime < originalStartTime {
+            // Dragging upward - adjust start time, keep original as end
+            dragStartTime = roundedTime
+            dragEndTime = originalStartTime.addingMinutes(15)
         }
     }
 
@@ -148,6 +169,7 @@ final class DayCalendarViewModel: ObservableObject {
         isDraggingNewEvent = false
         self.dragStartTime = nil
         self.dragEndTime = nil
+        lastHapticTime = nil
 
         HapticManager.shared.lightImpact()
     }
@@ -156,6 +178,7 @@ final class DayCalendarViewModel: ObservableObject {
         isDraggingNewEvent = false
         dragStartTime = nil
         dragEndTime = nil
+        lastHapticTime = nil
     }
 
     // MARK: - Event Resize

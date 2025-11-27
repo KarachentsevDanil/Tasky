@@ -54,15 +54,16 @@ struct TodayEmptyStateView: View {
         switch userType {
         case .firstTime:
             return [
-                Tip(icon: "text.bubble", text: "Start with \"Call mom\"", color: .blue),
-                Tip(icon: "clock", text: "Try \"tomorrow at 3pm\"", color: .orange),
-                Tip(icon: "flag.fill", text: "Use !high for priority", color: .red)
+                Tip(icon: "clock", text: "\"tomorrow at 3pm\" – dates & times", color: .orange),
+                Tip(icon: "hourglass", text: "\"in 3 days for 30 min\" – relative dates", color: .green),
+                Tip(icon: "number", text: "\"2-3pm #work\" – time ranges & lists", color: .purple),
+                Tip(icon: "flag.fill", text: "\"urgent\" or \"!!\" – set priority", color: .red)
             ]
         case .returning:
             return [
-                Tip(icon: "mic.fill", text: "Use voice input", color: .blue),
-                Tip(icon: "sparkles", text: "Try AI task creation", color: .purple),
-                Tip(icon: "calendar", text: "Schedule your day", color: .orange)
+                Tip(icon: "clock.badge.questionmark", text: "Try \"noon\", \"evening\", \"eod\"", color: .orange),
+                Tip(icon: "mic.fill", text: "Use voice input for hands-free", color: .blue),
+                Tip(icon: "sparkles", text: "AI understands natural language", color: .purple)
             ]
         case .powerUser:
             return [
@@ -86,6 +87,10 @@ struct TodayEmptyStateView: View {
                     ))
                     .frame(width: 100, height: 100)
                     .scaleEffect(isAnimating ? 1.1 : 1.0)
+                    .animation(
+                        reduceMotion ? .none : .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                        value: isAnimating
+                    )
 
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 48))
@@ -97,7 +102,12 @@ struct TodayEmptyStateView: View {
                         )
                     )
                     .scaleEffect(isAnimating ? 1.0 : 0.8)
+                    .animation(
+                        reduceMotion ? .none : .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                        value: isAnimating
+                    )
             }
+            .frame(width: 110, height: 110) // Fixed frame to prevent layout shifts
             .accessibilityHidden(true)
 
             // Title & Subtitle
@@ -168,13 +178,7 @@ struct TodayEmptyStateView: View {
     // MARK: - Animation
     private func startAnimation() {
         guard !reduceMotion else { return }
-
-        withAnimation(
-            .easeInOut(duration: 1.5)
-            .repeatForever(autoreverses: true)
-        ) {
-            isAnimating = true
-        }
+        isAnimating = true
     }
 }
 

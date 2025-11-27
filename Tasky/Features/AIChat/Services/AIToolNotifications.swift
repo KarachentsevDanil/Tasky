@@ -65,4 +65,36 @@ extension Notification.Name {
     /// Posted when undo is performed
     /// userInfo: ["actionType": String, "description": String]
     static let aiUndoAction = Notification.Name("aiUndoAction")
+
+    // MARK: - Bulk Operations
+
+    /// Posted when multiple tasks are completed via bulk operation
+    /// userInfo: ["taskIds": [UUID], "taskTitles": [String], "completed": Bool, "count": Int]
+    static let aiBulkTasksCompleted = Notification.Name("aiBulkTasksCompleted")
+
+    /// Posted when multiple tasks are rescheduled
+    /// userInfo: ["taskIds": [UUID], "taskTitles": [String], "newDate": Date, "count": Int]
+    static let aiBulkTasksRescheduled = Notification.Name("aiBulkTasksRescheduled")
+
+    /// Posted when multiple tasks are deleted
+    /// userInfo: ["taskTitles": [String], "count": Int]
+    static let aiBulkTasksDeleted = Notification.Name("aiBulkTasksDeleted")
+
+    /// Posted when multiple tasks are updated (priority/list)
+    /// userInfo: ["taskIds": [UUID], "taskTitles": [String], "changes": String, "count": Int]
+    static let aiBulkTasksUpdated = Notification.Name("aiBulkTasksUpdated")
+
+    // MARK: - Smart Operations
+
+    /// Posted when day planning is complete
+    /// userInfo: ["plan": String, "taskCount": Int, "totalMinutes": Int]
+    static let aiPlanMyDayCompleted = Notification.Name("aiPlanMyDayCompleted")
+
+    /// Posted when cleanup preview/execution is complete
+    /// userInfo: ["action": String, "preview": Bool, "affectedCount": Int, "message": String]
+    static let aiCleanupCompleted = Notification.Name("aiCleanupCompleted")
+
+    /// Posted when weekly review is generated
+    /// userInfo: ["completedCount": Int, "createdCount": Int, "completionRate": Double]
+    static let aiWeeklyReviewCompleted = Notification.Name("aiWeeklyReviewCompleted")
 }
