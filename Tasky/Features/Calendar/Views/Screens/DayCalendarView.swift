@@ -92,13 +92,9 @@ struct DayCalendarView: View {
                     }
                     .onAppear {
                         containerWidth = geometry.size.width
-                        // Scroll to current time on appear (only for today)
+                        // Scroll to current time immediately on appear (only for today)
                         if Calendar.current.isDateInToday(viewModel.selectedDate) {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                withAnimation(.easeOut(duration: 0.3)) {
-                                    scrollProxy.scrollTo("hour_\(currentHourForScroll)", anchor: .top)
-                                }
-                            }
+                            scrollProxy.scrollTo("hour_\(currentHourForScroll)", anchor: .top)
                         }
                     }
                     .onChange(of: viewModel.selectedDate) { _, newDate in
