@@ -27,6 +27,19 @@ struct DayCalendarView: View {
         static let horizontalPadding: CGFloat = 12
     }
 
+    // MARK: - Computed Properties
+
+    /// Y offset for scrolling to current time
+    private var currentTimeYOffset: CGFloat {
+        let calendar = Calendar.current
+        let now = Date()
+        let hour = calendar.component(.hour, from: now)
+        let minute = calendar.component(.minute, from: now)
+
+        let hoursFromStart = CGFloat(hour - viewModel.startHour) + CGFloat(minute) / 60.0
+        return hoursFromStart * viewModel.hourHeight
+    }
+
     // MARK: - Body
     var body: some View {
         VStack(spacing: 0) {
@@ -37,50 +50,76 @@ struct DayCalendarView: View {
 
             // Main calendar content
             GeometryReader { geometry in
-                ScrollView {
-                    ZStack(alignment: .topLeading) {
-                        // Time grid background with global drag gesture
-                        TimeGridView(
-                            startHour: viewModel.startHour,
-                            endHour: viewModel.endHour,
-                            hourHeight: viewModel.hourHeight,
-                            onSlotTap: { globalY in
-                                viewModel.handleTimeSlotTap(at: globalY)
-                            },
-                            onDragChanged: { globalY in
-                                viewModel.updateDraggedEvent(to: globalY)
-                            },
-                            onDragStarted: { globalY in
-                                viewModel.startDraggingNewEvent(at: globalY)
-                            },
-                            onDragEnded: {
-                                viewModel.finishDraggingNewEvent()
-                            }
-                        )
-
-                        // Events overlay
-                        eventsOverlay(containerWidth: geometry.size.width)
-
-                        // Current time indicator (only for today)
-                        if Calendar.current.isDateInToday(viewModel.selectedDate) {
-                            CurrentTimeIndicator(
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        ZStack(alignment: .topLeading) {
+                            // Time grid background with global drag gesture
+                            TimeGridView(
                                 startHour: viewModel.startHour,
+                                endHour: viewModel.endHour,
                                 hourHeight: viewModel.hourHeight,
-                                containerWidth: geometry.size.width
+                                onSlotTap: { globalY in
+                                    viewModel.handleTimeSlotTap(at: globalY)
+                                },
+                                onDragChanged: { globalY in
+                                    viewModel.updateDraggedEvent(to: globalY)
+                                },
+                                onDragStarted: { globalY in
+                                    viewModel.startDraggingNewEvent(at: globalY)
+                                },
+                                onDragEnded: {
+                                    viewModel.finishDraggingNewEvent()
+                                }
                             )
-                        }
 
-                        // Drag preview overlay
-                        if viewModel.isDraggingNewEvent {
-                            dragPreviewOverlay(containerWidth: geometry.size.width)
+                            // Events overlay
+                            eventsOverlay(containerWidth: geometry.size.width)
+
+                            // Current time indicator (only for today)
+                            if Calendar.current.isDateInToday(viewModel.selectedDate) {
+                                CurrentTimeIndicator(
+                                    startHour: viewModel.startHour,
+                                    hourHeight: viewModel.hourHeight,
+                                    containerWidth: geometry.size.width
+                                )
+                            }
+
+                            // Drag preview overlay
+                            if viewModel.isDraggingNewEvent {
+                                dragPreviewOverlay(containerWidth: geometry.size.width)
+                            }
+
+                            // Invisible anchor for scrolling to current time
+                            Color.clear
+                                .frame(width: 1, height: 1)
+                                .id("currentTimeAnchor")
+                                .offset(y: currentTimeYOffset)
+                        }
+                        .frame(
+                            height: CGFloat(viewModel.endHour - viewModel.startHour) * viewModel.hourHeight
+                        )
+                    }
+                    .onAppear {
+                        containerWidth = geometry.size.width
+                        // Scroll to current time on appear (only for today)
+                        if Calendar.current.isDateInToday(viewModel.selectedDate) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                withAnimation(.easeOut(duration: 0.3)) {
+                                    scrollProxy.scrollTo("currentTimeAnchor", anchor: .center)
+                                }
+                            }
                         }
                     }
-                    .frame(
-                        height: CGFloat(viewModel.endHour - viewModel.startHour) * viewModel.hourHeight
-                    )
-                }
-                .onAppear {
-                    containerWidth = geometry.size.width
+                    .onChange(of: viewModel.selectedDate) { _, newDate in
+                        // Scroll to current time when switching to today
+                        if Calendar.current.isDateInToday(newDate) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                withAnimation(.easeOut(duration: 0.3)) {
+                                    scrollProxy.scrollTo("currentTimeAnchor", anchor: .center)
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
